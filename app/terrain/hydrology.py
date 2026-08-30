@@ -8,7 +8,7 @@
 from collections import deque
 from dataclasses import dataclass
 import heapq
-from typing import Tuple
+from typing import Optional, Tuple
 import numpy as np
 
 # 8-neighbor directions: (dr, dc)
@@ -94,30 +94,51 @@ def calculate_slope(dem: np.ndarray, resolution_m: float) -> Tuple[np.ndarray, n
     return slope_pct.astype(np.float32), slope_deg.astype(np.float32)
 
 
-def compute_d8_flow_direction(filled_dem: np.ndarray, resolution_m: float) -> np.ndarray:
+def compute_d8_flow_direction(
+    filled_dem: np.ndarray,
+    resolution_m: float,
+    raw_dem: Optional[np.ndarray] = None,
+) -> np.ndarray:
     """
-    Computes D8 flow direction for every cell in the filled DEM.
+    Computes D8 flow direction for every cell.
+    Checks steepest descent on raw terrain first (to honor natural valleys and depressions),
+    falling back to depression-filled DEM across micro-pits and flat regions.
     Flow direction is stored as an integer from 0 to 7 indicating the steepest descent neighbor,
     or -1 for boundary/outlet cells.
     """
     nrows, ncols = filled_dem.shape
     flow_dir = np.full((nrows, ncols), -1, dtype=np.int8)
 
-    # 1. Primary pass: steepest downward slope
+    ref_dem = raw_dem if raw_dem is not None else filled_dem
+
+    # 1. Primary pass: steepest downward slope on raw_dem, then filled_dem
     for r in range(nrows):
         for c in range(ncols):
-            z_curr = filled_dem[r, c]
+            z_curr = ref_dem[r, c]
             max_drop = 0.0
             best_dir = -1
 
+            # Check neighbors on raw terrain first
             for dir_idx, (dr, dc) in enumerate(NEIGHBOR_OFFSETS):
                 nr, nc = r + dr, c + dc
                 if 0 <= nr < nrows and 0 <= nc < ncols:
                     dist = NEIGHBOR_DISTANCES[dir_idx] * resolution_m
-                    drop = (z_curr - filled_dem[nr, nc]) / dist
+                    drop = (z_curr - ref_dem[nr, nc]) / dist
                     if drop > max_drop:
                         max_drop = drop
                         best_dir = dir_idx
+
+            # If no downward slope on raw_dem, check filled_dem
+            if best_dir == -1 and raw_dem is not None:
+                z_filled = filled_dem[r, c]
+                for dir_idx, (dr, dc) in enumerate(NEIGHBOR_OFFSETS):
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < nrows and 0 <= nc < ncols:
+                        dist = NEIGHBOR_DISTANCES[dir_idx] * resolution_m
+                        drop = (z_filled - filled_dem[nr, nc]) / dist
+                        if drop > max_drop:
+                            max_drop = drop
+                            best_dir = dir_idx
 
             flow_dir[r, c] = best_dir
 
@@ -206,7 +227,7 @@ def analyze_terrain(dem: np.ndarray, resolution_m: float) -> HydrologyResult:
     """
     filled_dem = fill_depressions(dem)
     slope_pct, _ = calculate_slope(filled_dem, resolution_m)
-    flow_dir = compute_d8_flow_direction(filled_dem, resolution_m)
+    flow_dir = compute_d8_flow_direction(filled_dem, resolution_m, raw_dem=dem)
     flow_accum = compute_flow_accumulation(flow_dir)
 
     return HydrologyResult(

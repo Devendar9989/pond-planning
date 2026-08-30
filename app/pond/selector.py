@@ -84,13 +84,24 @@ def select_pond_site(
     max_log_accum = np.max(log_accum[valid_mask])
     norm_accum = log_accum / (max_log_accum + 1e-6)
 
-    # 2. Slope score: flatter is better for pond earthwork and water holding
+    # 2. Slope score: 0-8% slope is ideal for pond channels and storage, slopes >8% receive gradual penalty
     slope = hydro.slope_pct
-    # Slope penalty scaling: 0% slope -> 1.0 score, >= 20% slope -> 0.0 score
-    norm_slope_score = np.clip(1.0 - (slope / 20.0), 0.0, 1.0)
+    norm_slope_score = np.where(
+        slope <= 8.0,
+        1.0,
+        np.clip(1.0 - ((slope - 8.0) / 20.0), 0.0, 1.0),
+    )
 
-    # Composite score (70% flow accumulation, 30% flatness)
-    score_matrix = (norm_accum * 0.70) + (norm_slope_score * 0.30)
+    # 3. Natural depression / sink score (natural storage hollows)
+    depression_depth = np.maximum(hydro.filled_dem - dem.grid, 0.0)
+    max_dep = np.max(depression_depth[valid_mask]) if np.any(valid_mask) else 0.0
+
+    if max_dep > 0.5:
+        norm_depression = depression_depth / (max_dep + 1e-6)
+        score_matrix = (norm_accum * 0.55) + (norm_slope_score * 0.15) + (norm_depression * 0.30)
+    else:
+        score_matrix = (norm_accum * 0.75) + (norm_slope_score * 0.25)
+
     score_matrix[~valid_mask] = -np.inf
 
     best_idx = np.unravel_index(np.argmax(score_matrix), score_matrix.shape)
