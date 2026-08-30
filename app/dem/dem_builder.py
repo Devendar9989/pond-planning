@@ -117,8 +117,8 @@ def build_dem(
         resolution_m = round(max(resolution_m, target_res), 1)
         resolution_auto_adjusted = True
 
-    ncols = max(int(np.ceil(width_m / resolution_m)), 2)
-    nrows = max(int(np.ceil(height_m / resolution_m)), 2)
+    ncols = max(int(np.ceil(width_m / resolution_m)) + 1, 2)
+    nrows = max(int(np.ceil(height_m / resolution_m)) + 1, 2)
 
     # Coordinates: X goes West -> East, Y goes North -> South (standard raster matrix)
     x_coords = np.linspace(min_x, max_x, ncols, dtype=np.float64)

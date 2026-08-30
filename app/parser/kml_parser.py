@@ -21,6 +21,7 @@ class ContourLine:
 class ContourDataset:
     """Collection of contour lines with extracted metadata."""
     lines: List[ContourLine]
+    total_contour_lines: int
     elevation_range: Tuple[float, float]
     contour_interval_m: float
     bounds: Tuple[float, float, float, float]  # (min_lon, min_lat, max_lon, max_lat)
@@ -147,6 +148,8 @@ def parse_kml_or_kmz(source: Union[str, bytes, BinaryIO]) -> ContourDataset:
     all_lats: List[float] = []
     unique_elevations = set()
 
+    total_contour_features = 0
+
     for pm in placemarks:
         elevation = _extract_elevation_from_element(pm)
         if elevation is None:
@@ -158,6 +161,8 @@ def parse_kml_or_kmz(source: Union[str, bytes, BinaryIO]) -> ContourDataset:
             if not ce.text:
                 continue
             coords = _parse_coordinates_text(ce.text)
+            if len(coords) >= 1:
+                total_contour_features += 1
             if len(coords) >= 2:  # Must have at least 2 points to form a segment
                 contour_lines.append(ContourLine(elevation=elevation, coords=coords))
                 unique_elevations.add(elevation)
@@ -188,6 +193,7 @@ def parse_kml_or_kmz(source: Union[str, bytes, BinaryIO]) -> ContourDataset:
 
     dataset = ContourDataset(
         lines=contour_lines,
+        total_contour_lines=total_contour_features,
         elevation_range=(min_elev, max_elev),
         contour_interval_m=round(contour_interval, 2),
         bounds=(min_lon, min_lat, max_lon, max_lat),

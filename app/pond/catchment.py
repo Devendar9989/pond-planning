@@ -18,6 +18,11 @@ class CatchmentResult:
     area_m2: float
     area_hectares: float
     mean_slope_pct: float
+    max_slope_pct: float
+    min_elevation_m: float
+    max_elevation_m: float
+    relief_m: float
+    watershed_cell_count: int
     boundary_geojson: Dict[str, Any]
     catchment_mask: np.ndarray
 
@@ -54,7 +59,7 @@ def delineate_catchment(
         outlet_col: Column index of the chosen pond site.
 
     Returns:
-        CatchmentResult containing area, mean slope, and GeoJSON boundary.
+        CatchmentResult containing area, relief, slopes, cell count, and GeoJSON boundary.
     """
     nrows, ncols = dem.grid.shape
     flow_dir = hydro.flow_direction
@@ -85,9 +90,21 @@ def delineate_catchment(
     cell_area = dem.resolution_m ** 2
     total_cells = int(np.sum(catchment_mask))
     area_m2 = float(total_cells * cell_area)
-    area_hectares = round(area_m2 / 10000.0, 4)
+    area_hectares = round(area_m2 / 10000.0, 2)
 
-    mean_slope = float(np.mean(hydro.slope_pct[catchment_mask])) if total_cells > 0 else 0.0
+    catchment_elevs = dem.grid[catchment_mask]
+    if total_cells > 0:
+        min_elev = float(np.min(catchment_elevs))
+        max_elev = float(np.max(catchment_elevs))
+        relief = float(max_elev - min_elev)
+        mean_slope = float(np.mean(hydro.slope_pct[catchment_mask]))
+        max_slope = float(np.max(hydro.slope_pct[catchment_mask]))
+    else:
+        min_elev = float(dem.grid[outlet_row, outlet_col])
+        max_elev = min_elev
+        relief = 0.0
+        mean_slope = 0.0
+        max_slope = 0.0
 
     # 3. Vector boundary polygon generation
     res = dem.resolution_m
@@ -120,6 +137,11 @@ def delineate_catchment(
         area_m2=round(area_m2, 2),
         area_hectares=area_hectares,
         mean_slope_pct=round(mean_slope, 2),
+        max_slope_pct=round(max_slope, 2),
+        min_elevation_m=round(min_elev, 2),
+        max_elevation_m=round(max_elev, 2),
+        relief_m=round(relief, 2),
+        watershed_cell_count=total_cells,
         boundary_geojson=geojson_geom,
         catchment_mask=catchment_mask,
     )

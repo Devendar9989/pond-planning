@@ -86,25 +86,33 @@ curl -X POST "http://127.0.0.1:8000/analyzeContour" \
 {
   "contour_interval_m": 1.0,
   "elevation_range_m": [267.0, 298.0],
+  "total_contour_lines": 2710,
   "grid_resolution_m": 10.0,
+  "grid_shape": [264, 326],
   "resolution_auto_adjusted": false,
   "pond_site": {
-    "lat": 21.257795,
-    "lon": 81.285885,
-    "elevation_m": 270.85
+    "lat": 21.244413,
+    "lon": 81.291006,
+    "elevation_m": 275.0,
+    "flow_accumulation_cells": 166
   },
   "catchment": {
-    "area_m2": 248600.0,
-    "area_hectares": 24.86,
-    "mean_slope_pct": 5.42,
+    "area_m2": 16600.0,
+    "area_hectares": 1.66,
+    "mean_slope_pct": 3.58,
+    "max_slope_pct": 10.93,
+    "min_elevation_m": 275.0,
+    "max_elevation_m": 281.0,
+    "relief_m": 6.0,
+    "watershed_cell_count": 166,
     "boundary_geojson": {
       "type": "Polygon",
       "coordinates": [
         [
-          [81.2841, 21.2562],
-          [81.2875, 21.2589],
-          [81.2862, 21.2612],
-          [81.2841, 21.2562]
+          [81.290476, 21.244549],
+          [81.290477, 21.245092],
+          [81.290573, 21.245091],
+          [81.290476, 21.244549]
         ]
       ]
     }

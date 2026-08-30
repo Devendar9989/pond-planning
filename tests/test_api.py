@@ -49,7 +49,9 @@ def test_analyze_contour_sample_kml_success():
     assert payload["contour_interval_m"] == pytest.approx(1.0, rel=1e-2)
     assert payload["elevation_range_m"][0] == pytest.approx(267.0, rel=1e-2)
     assert payload["elevation_range_m"][1] == pytest.approx(298.0, rel=1e-2)
+    assert payload["total_contour_lines"] == 2710
     assert payload["grid_resolution_m"] == 10.0
+    assert payload["grid_shape"] == [264, 326]
     assert not payload["resolution_auto_adjusted"]
     assert payload["processing_time_ms"] > 0
 
@@ -58,12 +60,17 @@ def test_analyze_contour_sample_kml_success():
     assert 81.0 <= pond["lon"] <= 82.0
     assert 21.0 <= pond["lat"] <= 22.0
     assert 267.0 <= pond["elevation_m"] <= 298.0
+    assert pond["flow_accumulation_cells"] > 0
 
     # Validate catchment
     catchment = payload["catchment"]
     assert catchment["area_m2"] >= 500.0
     assert catchment["area_hectares"] == pytest.approx(catchment["area_m2"] / 10000.0, rel=1e-3)
     assert catchment["mean_slope_pct"] >= 0.0
+    assert catchment["max_slope_pct"] >= catchment["mean_slope_pct"]
+    assert catchment["min_elevation_m"] <= catchment["max_elevation_m"]
+    assert catchment["relief_m"] == pytest.approx(catchment["max_elevation_m"] - catchment["min_elevation_m"], rel=1e-3)
+    assert catchment["watershed_cell_count"] > 0
 
     # Validate GeoJSON structure
     geojson = catchment["boundary_geojson"]
