@@ -4,7 +4,7 @@
 # ==============================================================================
 set -euo pipefail
 
-PORT=3241
+PORT="${1:-3000}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
