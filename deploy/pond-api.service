@@ -1,0 +1,26 @@
+[Unit]
+Description=Contour-Based Pond Catchment Analysis API
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/pond-api
+Environment="PATH=/opt/pond-api/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/opt/pond-api/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --log-level info
+
+# Resource constraints for 512MB box
+MemoryHigh=450M
+MemoryMax=490M
+CPUQuota=100%
+
+Restart=always
+RestartSec=5s
+
+# Sandboxing & security hardening
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
