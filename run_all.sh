@@ -66,7 +66,7 @@ echo "============================================================"
 SAMPLE_FILE="${SCRIPT_DIR}/contours_1m.kml"
 if [ -f "${SAMPLE_FILE}" ]; then
     RESPONSE=$(curl -s -X POST "http://127.0.0.1:${PORT}/analyzeContour" \
-      -F "file=@${SAMPLE_FILE}" \
+      -F "contour_map=@${SAMPLE_FILE}" \
       -F "resolution_m=10.0")
     echo "Response Payload:"
     echo "${RESPONSE}" | python3 -m json.tool || echo "${RESPONSE}"

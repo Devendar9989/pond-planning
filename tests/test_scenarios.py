@@ -91,7 +91,7 @@ def test_scenario_v_shaped_valley():
     # Call API
     response = client.post(
         "/analyzeContour",
-        files={"file": ("v_valley.kml", io.BytesIO(kml_str.encode("utf-8")), "application/vnd.google-earth.kml+xml")},
+        files={"contour_map": ("v_valley.kml", io.BytesIO(kml_str.encode("utf-8")), "application/vnd.google-earth.kml+xml")},
         data={"resolution_m": "10.0", "min_catchment_area_m2": "1000.0"},
     )
 
@@ -164,7 +164,7 @@ def test_scenario_concentric_bowl():
 
     response = client.post(
         "/analyzeContour",
-        files={"file": ("bowl.kml", io.BytesIO(kml_str.encode("utf-8")), "application/vnd.google-earth.kml+xml")},
+        files={"contour_map": ("bowl.kml", io.BytesIO(kml_str.encode("utf-8")), "application/vnd.google-earth.kml+xml")},
         data={"resolution_m": "10.0"},
     )
 
@@ -200,7 +200,7 @@ def test_scenario_kmz_archive():
 
     response = client.post(
         "/analyzeContour",
-        files={"file": ("terrain.kmz", io.BytesIO(kmz_bytes), "application/vnd.google-earth.kmz")},
+        files={"contour_map": ("terrain.kmz", io.BytesIO(kmz_bytes), "application/vnd.google-earth.kmz")},
         data={"resolution_m": "10.0"},
     )
 
@@ -237,7 +237,7 @@ def test_scenario_southern_hemisphere_australia():
 
     response = client.post(
         "/analyzeContour",
-        files={"file": ("sydney_catchment.kml", io.BytesIO(kml_str.encode("utf-8")), "application/vnd.google-earth.kml+xml")},
+        files={"contour_map": ("sydney_catchment.kml", io.BytesIO(kml_str.encode("utf-8")), "application/vnd.google-earth.kml+xml")},
         data={"resolution_m": "10.0"},
     )
 
@@ -280,7 +280,7 @@ def test_scenario_min_catchment_area_filter():
 
     response = client.post(
         "/analyzeContour",
-        files={"file": ("valley.kml", io.BytesIO(kml_str.encode("utf-8")), "application/vnd.google-earth.kml+xml")},
+        files={"contour_map": ("valley.kml", io.BytesIO(kml_str.encode("utf-8")), "application/vnd.google-earth.kml+xml")},
         data={"resolution_m": "10.0", "min_catchment_area_m2": "5000.0"},
     )
 
@@ -319,7 +319,7 @@ def test_scenario_dual_watershed_ridge_divide():
 
     response = client.post(
         "/analyzeContour",
-        files={"file": ("ridge_valleys.kml", io.BytesIO(kml_str.encode("utf-8")), "application/vnd.google-earth.kml+xml")},
+        files={"contour_map": ("ridge_valleys.kml", io.BytesIO(kml_str.encode("utf-8")), "application/vnd.google-earth.kml+xml")},
         data={"resolution_m": "10.0"},
     )
 

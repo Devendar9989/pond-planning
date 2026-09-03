@@ -67,7 +67,14 @@ def health_check() -> HealthResponse:
     },
 )
 async def analyze_contour(
-    file: UploadFile = File(..., description="KML or KMZ contour map file"),
+    contour_map: Optional[UploadFile] = File(
+        default=None,
+        description="KML or KMZ contour map file (primary variable name: contour_map)",
+    ),
+    file: Optional[UploadFile] = File(
+        default=None,
+        description="Alternative fallback parameter name for KML/KMZ contour map file",
+    ),
     resolution_m: Optional[float] = Form(
         default=DEFAULT_RESOLUTION_M,
         description="Target DEM grid resolution in meters (default 10.0)",
@@ -80,12 +87,20 @@ async def analyze_contour(
     ),
 ) -> AnalyzeContourResponse:
     """
-    Accepts a KML/KMZ contour map upload, analyzes terrain topography,
-    identifies the optimal pond location, and computes the upstream catchment boundary.
+    Accepts a KML/KMZ contour map upload (under 'contour_map' or 'file'),
+    analyzes terrain topography, identifies the optimal pond location,
+    and computes the upstream catchment boundary.
     """
+    upload = contour_map or file
+    if upload is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing contour map file. Please upload a KML or KMZ file under variable name 'contour_map'.",
+        )
+
     start_time = time.perf_counter()
 
-    filename = file.filename or ""
+    filename = upload.filename or ""
     lower_name = filename.lower()
     if not (lower_name.endswith(".kml") or lower_name.endswith(".kmz")):
         raise HTTPException(
@@ -101,7 +116,7 @@ async def analyze_contour(
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
             tmp_path = tmp_file.name
             bytes_written = 0
-            while chunk := await file.read(64 * 1024):  # 64KB chunks
+            while chunk := await upload.read(64 * 1024):  # 64KB chunks
                 bytes_written += len(chunk)
                 if bytes_written > MAX_UPLOAD_SIZE_BYTES:
                     raise HTTPException(

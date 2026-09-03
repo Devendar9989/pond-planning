@@ -69,14 +69,14 @@ Verifies server health and readiness.
 Uploads a contour map, executes hydrological modeling, and returns the optimal pond location and catchment.
 
 **Request:** `multipart/form-data`
-- `file` *(required)*: `.kml` or `.kmz` file.
+- `contour_map` *(required)*: `.kml` or `.kmz` contour map file (fallback parameter name: `file`).
 - `resolution_m` *(optional, default: `10.0`)*: Target grid resolution in meters.
 - `min_catchment_area_m2` *(optional, default: `500.0`)*: Minimum upstream catchment area threshold.
 
 **Sample Request (`curl`):**
 ```bash
-curl -X POST "http://127.0.0.1:8000/analyzeContour" \
-  -F "file=@contours_1m.kml" \
+curl -X POST "http://10.1.75.51:3241/analyzeContour" \
+  -F "contour_map=@contours_1m.kml" \
   -F "resolution_m=10.0" \
   -F "min_catchment_area_m2=500.0"
 ```

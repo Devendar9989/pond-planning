@@ -64,7 +64,7 @@ The complete pipeline was demonstrated on the provided reference contour map (`c
 ### Live Execution Command (Port 3241):
 ```bash
 curl -X POST "http://10.1.75.51:3241/analyzeContour" \
-  -F "file=@contours_1m.kml" \
+  -F "contour_map=@contours_1m.kml" \
   -F "resolution_m=10.0"
 ```
 
@@ -193,7 +193,8 @@ Hydrological validity is proven through pure-NumPy priority-flood depression fil
 Analyzes uploaded contour map, identifies optimal pond outlet site, and delineates upstream catchment boundary.
 * **Content-Type:** `multipart/form-data`
 * **Request Parameters:**
-  - `file` (*UploadFile, required*): `.kml` or `.kmz` contour map file.
+  - `contour_map` (*UploadFile, required*): `.kml` or `.kmz` contour map file (primary variable name).
+  - `file` (*UploadFile, optional fallback*): Alternative parameter name for `.kml`/`.kmz` contour map file.
   - `resolution_m` (*float, optional, default: 10.0*): Target DEM cell size in meters.
   - `min_catchment_area_m2` (*float, optional, default: 500.0*): Minimum required catchment threshold.
 * **Response Status Codes:**

@@ -76,3 +76,26 @@ def test_analyze_contour_sample_kml_success():
     geojson = catchment["boundary_geojson"]
     assert geojson["type"] in ["Polygon", "MultiPolygon"]
     assert len(geojson["coordinates"]) > 0
+
+
+def test_analyze_contour_with_contour_map_param():
+    """Verify POST /analyzeContour works with primary parameter name 'contour_map'."""
+    assert os.path.exists(SAMPLE_KML_PATH), "contours_1m.kml must exist"
+
+    with open(SAMPLE_KML_PATH, "rb") as f:
+        files = {"contour_map": ("contours_1m.kml", f, "application/vnd.google-earth.kml+xml")}
+        data = {"resolution_m": "10.0", "min_catchment_area_m2": "500.0"}
+        response = client.post("/analyzeContour", files=files, data=data)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_contour_lines"] == 2710
+    assert payload["pond_site"]["flow_accumulation_cells"] > 0
+    assert payload["catchment"]["area_m2"] >= 500.0
+
+
+def test_analyze_contour_missing_file():
+    """Verify 400 error when neither contour_map nor file is provided."""
+    response = client.post("/analyzeContour", files={}, data={"resolution_m": "10.0"})
+    assert response.status_code == 400
+    assert "Missing contour map file" in response.json()["detail"]
