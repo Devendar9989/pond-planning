@@ -1,0 +1,222 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{caption}
+\usepackage{float}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    urlcolor=black,
+    citecolor=black
+}
+
+\title{\textbf{Contour-Based Farm Pond Siting, Catchment Delineation, and Water Harvest Volume Estimation API}\\[0.5ex]
+\large System Design, Hydrological Modeling, Front-End Interface, and Distributed Deployment}
+\author{\textbf{System Design Project Team} \\ Student ID: student@10.1.75.51 \\ GitHub: \url{https://github.com/Devendar9989/pond-planning.git}}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This report details the architectural design, mathematical formulation, full-stack implementation, and distributed deployment of the \textbf{PondPlan AI} system. The platform accepts topographic contour maps in KML and KMZ formats, reconstructs a regularized metric Digital Elevation Model (DEM), models terrain runoff dynamics using vectorized NumPy algorithms (Priority-Flood pit filling, 2nd-order slope computation, D8 flow routing, and $O(N)$ topological flow accumulation), identifies optimal farm pond outlet sites, estimates expected harvestable runoff water volume, and delineates upstream catchment boundaries as topologically closed GeoJSON polygons. A complete interactive Web Front-End with Leaflet map overlays enables users to select specific land parcels, customize precipitation and soil runoff parameters, and visualize pond sites and catchment boundaries in real time. The solution is engineered to operate strictly within 512MB RAM constraints and has been deployed on the target remote environment at \texttt{http://10.1.75.51:3241/}.
+\end{abstract}
+
+\vspace{1em}
+\noindent\textbf{Project Deliverables Summary:}
+\begin{itemize}[noitemsep]
+    \item \textbf{Working Front-End \& API URL:} \url{http://10.1.75.51:3241/}
+    \item \textbf{Active API Analysis Endpoint:} \texttt{POST http://10.1.75.51:3241/analyzeContour}
+    \item \textbf{GitHub Repository:} \url{https://github.com/Devendar9989/pond-planning.git}
+    \item \textbf{Remote Deployment Host:} \texttt{student@10.1.75.51:2241} (Directory: \texttt{/home/student/pond_panning})
+\end{itemize}
+
+\section{Introduction and Problem Statement [MUST BE INCLUDED]}
+Water security in dryland agriculture depends heavily on the strategic placement of farm ponds (on-farm water harvesting reservoirs). Poorly located ponds fail to capture sufficient runoff volume, suffer from embankment collapse on excessive slopes, or capture silt from overly steep valleys. Conversely, manual surveying across large land parcels is labor-intensive and error-prone.
+
+The objective of this project is to build an automated, cloud-deployable geospatial service capable of:
+\begin{enumerate}[noitemsep]
+    \item Parsing arbitrary contour survey maps in KML and compressed KMZ formats.
+    \item Reconstructing high-resolution metric Digital Elevation Models (DEMs).
+    \item Modeling surface runoff without relying on heavy external C/C++ GIS libraries (e.g., GDAL, rasterio, or richdem) to strictly respect strict memory limits ($<512\text{MB}$ RAM).
+    \item Allowing users to select specific land areas / agricultural parcels on an interactive map.
+    \item Optimally siting farm ponds using multi-criteria hydrological heuristics.
+    \item Estimating the harvestable annual water volume ($m^3$, Liters, and Million Liters).
+    \item Delineating exact upstream catchment boundaries and overlaying results on an interactive map.
+\end{enumerate}
+
+\section{System Architecture and High-Level Design [MUST BE INCLUDED]}
+The system is built upon a layered microservice architecture powered by FastAPI (Python 3.12+), vectorized NumPy/SciPy computing engines, and a responsive Leaflet Single Page Application.
+
+\begin{figure}[H]
+\centering
+\begin{verbatim}
++-----------------------------------------------------------------------------+
+|                          INTERACTIVE WEB FRONT-END                          |
+|   Leaflet Map (OSM/Satellite) | Land Area AOI Draw Tool | Volume Dashboard  |
++-----------------------------------------------------------------------------+
+                                       | HTTP POST (multipart/form-data)
+                                       v
++-----------------------------------------------------------------------------+
+|                          FASTAPI SERVICE LAYER                              |
+|   /analyzeContour (primary param: contour_map) | /health | Static UI Mount  |
++-----------------------------------------------------------------------------+
+                                       |
+    +----------------------------------+----------------------------------+
+    |                                  |                                  |
+    v                                  v                                  v
++--------------------+      +--------------------+      +---------------------+
+| KML/KMZ Parser     |      | Metric DEM Builder |      | Hydrology Engine    |
+| (lxml local-name)  |----->| (pyproj UTM Zone   |----->| (Priority-Flood, D8 |
+| Disk-streamed I/O  |      | Memory Guard Rail) |      | O(N) In-Degree DAG) |
++--------------------+      +--------------------+      +---------------------+
+                                                                   |
+                                                                   v
++-----------------------------------------------------------------------------+
+|               MULTI-CRITERIA POND SITING & CATCHMENT DELINEATION             |
+|   AOI Filtering | Siting Heuristic | Reverse-D8 BFS | Water Volume Engine   |
++-----------------------------------------------------------------------------+
+                                       |
+                                       v
++-----------------------------------------------------------------------------+
+|                          STRUCTURED JSON RESPONSE                           |
+|   Pond Lat/Lon/Elev | Catchment Area (ha) | Volume (m³) | GeoJSON Polygon   |
++-----------------------------------------------------------------------------+
+\end{verbatim}
+\caption{End-to-End System Architecture Pipeline.}
+\end{figure}
+
+\section{Hydrological Modeling and Formulation [MUST BE INCLUDED]}
+
+\subsection{Dynamic UTM Projection and DEM Interpolation}
+Geographic coordinates (WGS84) use degrees, where metric distances distort with latitude. The system computes the geographic centroid of the contour dataset $(\bar{\lambda}, \bar{\phi})$ and determines the local metric Universal Transverse Mercator (UTM) zone:
+\begin{equation}
+\text{Zone} = \left\lfloor \frac{\bar{\lambda} + 180}{6} \right\rfloor + 1, \quad \text{EPSG} = 32600 + \text{Zone} \quad (\text{or } 32700 + \text{Zone if } \bar{\phi} < 0)
+\end{equation}
+Contour lines are densified along line segments and interpolated onto a 2D regular grid of cell resolution $\Delta x = \Delta y = \text{resolution\_m}$ using linear barycentric interpolation with nearest-neighbor convex hull filling.
+
+\paragraph{Memory Safety Guard Rail:} To protect the 512MB RAM budget, if the grid dimensions exceed $N_{\max} = 150,000$ cells, the engine dynamically coarsens resolution:
+\begin{equation}
+\Delta x_{\text{adjusted}} = \sqrt{\frac{W_{\text{meters}} \times H_{\text{meters}}}{N_{\max}}}
+\end{equation}
+
+\subsection{Priority-Flood Depression Filling}
+Interpolated and natural DEMs contain spurious digital depressions that interrupt simulated flow paths. We implement Barnes et al. (2014) Priority-Flood algorithm using a priority queue (\texttt{heapq}) initialized with all border cells. Processing cells inward in $O(N \log N)$ time raises depressions to the lowest boundary pour-point elevation:
+\begin{equation}
+z_{\text{filled}}(c) = \max\left(z_{\text{raw}}(c), z_{\text{spill}}(n)\right)
+\end{equation}
+
+\subsection{2nd-Order Terrain Slope and D8 Flow Direction}
+Surface slope is computed via central difference gradient operators:
+\begin{equation}
+\text{Slope}_{\text{pct}} = 100 \times \sqrt{\left(\frac{\partial z}{\partial x}\right)^2 + \left(\frac{\partial z}{\partial y}\right)^2}
+\end{equation}
+D8 flow direction assigns runoff from cell $i$ to the neighbor $j \in \mathcal{N}_8(i)$ with the maximum downward drop:
+\begin{equation}
+S_{i,j} = \frac{z_{\text{filled}}(i) - z_{\text{filled}}(j)}{d_{i,j}}, \quad d_{i,j} = \begin{cases} \Delta x & \text{orthogonal} \\ \sqrt{2}\Delta x & \text{diagonal} \end{cases}
+\end{equation}
+
+\subsection{Topological In-Degree Flow Accumulation in $O(N)$ Time}
+Instead of recursive traversals that risk Python call-stack overflow on large rasters, we calculate the in-degree matrix $\text{deg}^-(c)$ (number of upstream neighbors routing into cell $c$). A queue is initialized with all ridge cells ($\text{deg}^-(c) = 0$). Cells are popped, their contributing accumulation $A(c)$ is transferred to their downstream target, and in-degrees are decremented, resolving the directed acyclic graph (DAG) in linear $O(N)$ time.
+
+\subsection{Multi-Criteria Pond Siting Heuristic}
+Candidate cells within the interior margin (and filtered by the user's selected land parcel) are scored via:
+\begin{equation}
+\text{Score}(c) = 0.70 \cdot \frac{\ln(1 + A_c)}{\max \ln(1 + A)} + 0.30 \cdot f(\text{Slope}_c) + \text{DepressionDepth}_c
+\end{equation}
+where $f(\text{Slope})$ assigns full weight to slopes $\le 8\%$ and linearly penalizes slopes $>8\%$.
+
+\subsection{Expected Water Volume Harvest Estimation}
+Harvestable water runoff volume is calculated using the hydrological Rational Runoff Method:
+\begin{equation}
+V_{\text{annual}} (m^3) = \text{Area}_{\text{catchment}} (m^2) \times \left(\frac{P_{\text{annual}} (mm)}{1000}\right) \times C
+\end{equation}
+\begin{equation}
+V_{\text{Liters}} = V_{\text{annual}} \times 1000, \quad V_{\text{ML}} = \frac{V_{\text{annual}}}{1000}
+\end{equation}
+where $P$ is annual rainfall (default $1000\text{ mm}$), and $C$ is the runoff coefficient ($0.35$ for agricultural loam, $0.50$ for clay, $0.70$ for rocky terrain, and $0.20$ for sandy soil).
+
+\section{Interactive Front-End and Map Area Selection [MUST BE INCLUDED]}
+The front-end is implemented as a standalone Single Page Application (SPA) utilizing Leaflet.js, Leaflet-Draw, and Tailwind CSS, served directly from the FastAPI backend at \texttt{http://10.1.75.51:3241/}.
+
+\subsection{Key Front-End Capabilities}
+\begin{itemize}[noitemsep]
+    \item \textbf{Interactive Land Area Selection:} The user can draw a bounding box (rectangle) or custom polygon directly on the map to define their specific land parcel. The API restricts pond siting to that chosen parcel.
+    \item \textbf{One-Click Survey Preload:} Pre-configured with the reference \texttt{contours\_1m.kml} survey map for instant live demonstration, alongside a custom drag-and-drop file uploader.
+    \item \textbf{Dynamic Map Overlays:} 
+    \begin{enumerate}[noitemsep]
+        \item \emph{Catchment Boundary:} Rendered as a cyan semi-transparent shaded polygon with high-contrast borders.
+        \item \emph{Suggested Pond Location:} Marked with an animated pulsating water drop icon with popup metrics.
+        \item \emph{Selected Land Parcel:} Outlined in amber dashed lines.
+    \end{enumerate}
+    \item \textbf{Real-Time Water Volume Calculator:} Interactive sliders for rainfall ($200\text{ mm} - 2500\text{ mm}$) and soil coefficient ($C$) dynamically update volume in $m^3$, Million Liters (ML), and equivalent Olympic pools.
+    \item \textbf{Export Utilities:} Direct buttons to download the Catchment GeoJSON boundary and export the full JSON report.
+\end{itemize}
+
+\section{Demonstration on Provided Map (contours\_1m.kml) [MUST BE INCLUDED]}
+The platform was executed on the provided reference survey map (\texttt{contours\_1m.kml}), encompassing a $3.2\text{km} \times 2.6\text{km}$ agricultural terrain in Chhattisgarh, India with 2,710 contour features.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Metric} & \textbf{Computed Value \& Significance} \\
+\midrule
+Contour Interval & $1.0\text{ m}$ (dynamically detected) \\
+Terrain Elevation Range & $267.0\text{ m} - 298.0\text{ m}$ ($31.0\text{ m}$ total relief) \\
+Optimal Pond Location & Latitude $21.251833^\circ\text{N}$, Longitude $81.296571^\circ\text{E}$ \\
+Pond Surface Elevation & $270.0\text{ m}$ AMSL (natural outlet channel) \\
+Catchment Surface Area & $44,300.0\text{ m}^2$ ($4.43\text{ Hectares}$, 443 raster cells) \\
+Mean Catchment Slope & $4.80\%$ (optimal for stable agricultural drainage) \\
+Basin Topographic Relief & $23.0\text{ m}$ ($270.0\text{ m} \rightarrow 293.0\text{ m}$) \\
+\textbf{Expected Water Volume} & $\mathbf{15,505.0\text{ m}^3}$ ($\mathbf{15.51\text{ Million Liters / ML}}$ at $1000\text{mm}$, $C=0.35$) \\
+Equivalence & $\approx 6.2\text{ Olympic Swimming Pools}$ ($\approx 31\text{ days of 5-acre irrigation}$) \\
+Processing Runtime & $2,446\text{ ms}$ (end-to-end) \\
+\bottomrule
+\end{tabular}
+\caption{Hydrological analysis outputs for \texttt{contours\_1m.kml}.}
+\end{table}
+
+\section{Multi-System Scaling, Stress, and Load Balancing [MUST BE INCLUDED]}
+To satisfy the multi-system scaling requirements across the four available student servers:
+\begin{itemize}[noitemsep]
+    \item \textbf{Stateless Processing:} The FastAPI backend maintains zero session state; requests are completely self-contained, enabling round-robin and least-connections load balancing.
+    \item \textbf{Multi-Node Deployment:} Workers can be distributed across nodes (\texttt{10.1.75.51:3241}, \texttt{172.17.0.43:3242}, \texttt{172.17.0.44:3243}, \texttt{172.17.0.45:3244}) behind an Nginx or Golang reverse-proxy load balancer.
+    \item \textbf{Stress Mitigation:} Disk-streamed temporary file handling and the Auto-Coarsening Guard Rail guarantee that concurrent uploads cannot trigger out-of-memory kernel panics.
+\end{itemize}
+
+\section{Limitations and Future Extensions [MUST BE INCLUDED]}
+\begin{itemize}[noitemsep]
+    \item \textbf{Soil Infiltration Mapping:} Current volume estimation uses lumped runoff coefficients; future iterations can integrate spatial USDA SCS-CN soil raster grids.
+    \item \textbf{Multi-Pond Cascades:} Expanding the selector to place cascading micro-dams across hierarchical stream orders.
+\end{itemize}
+
+\section*{Appendix: API Documentation \& Parameter Specification}
+\begin{itemize}[noitemsep]
+    \item \textbf{Endpoint:} \texttt{POST /analyzeContour} (Content-Type: \texttt{multipart/form-data})
+    \item \textbf{Parameters:}
+    \begin{itemize}[noitemsep]
+        \item \texttt{contour\_map} (\emph{UploadFile, required}): KML or KMZ contour map file (fallback: \texttt{file}).
+        \item \texttt{resolution\_m} (\emph{float, optional, default: 10.0}): Target DEM cell resolution in meters.
+        \item \texttt{min\_catchment\_area\_m2} (\emph{float, optional, default: 500.0}): Minimum catchment area threshold.
+        \item \texttt{rainfall\_mm} (\emph{float, optional, default: 1000.0}): Annual precipitation in mm.
+        \item \texttt{runoff\_coefficient} (\emph{float, optional, default: 0.35}): Rational runoff coefficient $C$.
+        \item \texttt{selected_bounds} (\emph{string, optional}): JSON string \texttt{[min\_lon, min\_lat, max\_lon, max\_lat]} for land area AOI.
+    \end{itemize}
+\end{itemize}
+
+\section*{AI Assistance Disclosure}
+This project was designed, implemented, and verified with pair-programming assistance from \textbf{Google DeepMind's Antigravity Advanced Agentic AI} (powered by Gemini 3.7 architecture).
+
+\end{document}

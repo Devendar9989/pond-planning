@@ -1,8 +1,8 @@
-"""Watershed delineation and GeoJSON boundary polygon generation."""
+"""Watershed delineation and GeoJSON boundary polygon generation with water volume calculation."""
 
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 from pyproj import Transformer
 import shapely.geometry
@@ -14,7 +14,7 @@ from app.terrain.hydrology import NEIGHBOR_OFFSETS, HydrologyResult
 
 @dataclass
 class CatchmentResult:
-    """Delineated catchment area results and boundary."""
+    """Delineated catchment area results, water volume estimation, and boundary."""
     area_m2: float
     area_hectares: float
     mean_slope_pct: float
@@ -23,6 +23,11 @@ class CatchmentResult:
     max_elevation_m: float
     relief_m: float
     watershed_cell_count: int
+    expected_water_volume_m3: float
+    expected_water_volume_liters: float
+    expected_water_volume_million_liters: float
+    rainfall_mm: float
+    runoff_coefficient: float
     boundary_geojson: Dict[str, Any]
     catchment_mask: np.ndarray
 
@@ -47,19 +52,28 @@ def delineate_catchment(
     hydro: HydrologyResult,
     outlet_row: int,
     outlet_col: int,
+    rainfall_mm: float = 1000.0,
+    runoff_coefficient: float = 0.35,
 ) -> CatchmentResult:
     """
     Traces upstream contributing area from the given outlet cell using reverse D8 flow direction,
-    computes watershed statistics, and builds a GeoJSON polygon boundary.
+    computes watershed statistics, estimates harvestable water volume, and builds a GeoJSON polygon boundary.
+
+    Hydrological Runoff Formula:
+        Volume (m³) = Catchment Area (m²) * (Rainfall (mm) / 1000) * Runoff Coefficient (C)
+        Volume (Liters) = Volume (m³) * 1000
+        Volume (Million Liters / ML) = Volume (Liters) / 1,000,000
 
     Args:
         dem: DEMGrid containing spatial coordinates and projection information.
         hydro: HydrologyResult with D8 flow directions and slope.
         outlet_row: Row index of the chosen pond site.
         outlet_col: Column index of the chosen pond site.
+        rainfall_mm: Annual or seasonal precipitation in mm (default 1000.0 mm).
+        runoff_coefficient: Rational method runoff coefficient C (default 0.35 for agricultural loam).
 
     Returns:
-        CatchmentResult containing area, relief, slopes, cell count, and GeoJSON boundary.
+        CatchmentResult containing area, volume, relief, slopes, cell count, and GeoJSON boundary.
     """
     nrows, ncols = dem.grid.shape
     flow_dir = hydro.flow_direction
@@ -86,11 +100,18 @@ def delineate_catchment(
                         catchment_mask[nr, nc] = True
                         queue.append((nr, nc))
 
-    # 2. Catchment statistics
+    # 2. Catchment statistics & Water Volume Calculation
     cell_area = dem.resolution_m ** 2
     total_cells = int(np.sum(catchment_mask))
     area_m2 = float(total_cells * cell_area)
     area_hectares = round(area_m2 / 10000.0, 2)
+
+    # Standard Hydrological Rational Runoff Volume Calculation
+    effective_coeff = float(np.clip(runoff_coefficient, 0.01, 1.0))
+    effective_rainfall = max(float(rainfall_mm), 0.0)
+    expected_vol_m3 = round(area_m2 * (effective_rainfall / 1000.0) * effective_coeff, 2)
+    expected_vol_liters = round(expected_vol_m3 * 1000.0, 2)
+    expected_vol_ml = round(expected_vol_liters / 1_000_000.0, 2)
 
     catchment_elevs = dem.grid[catchment_mask]
     if total_cells > 0:
@@ -111,7 +132,6 @@ def delineate_catchment(
     half_res = res / 2.0
     cell_boxes = []
 
-    # Construct shapely box for each cell in catchment
     rows, cols = np.where(catchment_mask)
     for r, c in zip(rows, cols):
         x = dem.x_coords[c]
@@ -142,6 +162,11 @@ def delineate_catchment(
         max_elevation_m=round(max_elev, 2),
         relief_m=round(relief, 2),
         watershed_cell_count=total_cells,
+        expected_water_volume_m3=expected_vol_m3,
+        expected_water_volume_liters=expected_vol_liters,
+        expected_water_volume_million_liters=expected_vol_ml,
+        rainfall_mm=effective_rainfall,
+        runoff_coefficient=effective_coeff,
         boundary_geojson=geojson_geom,
         catchment_mask=catchment_mask,
     )

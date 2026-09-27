@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PondPlan AI — Contour-Based Farm Pond Siting & Catchment Delineation</title>
+  
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Leaflet Draw -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+  <!-- Google Fonts & Tailwind CSS -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Chart.js for statistics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    #map { height: calc(100vh - 65px); min-height: 550px; z-index: 10; }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(226, 232, 240, 0.8);
+    }
+    .water-pulse {
+      animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.9); opacity: 0.9; }
+      50% { transform: scale(1.3); opacity: 0.4; }
+      100% { transform: scale(0.9); opacity: 0.9; }
+    }
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased overflow-hidden">
+
+  <!-- TOP NAVIGATION BAR -->
+  <header class="h-[65px] bg-white border-b border-slate-200 px-6 flex items-center justify-between z-30 relative shadow-sm">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+        <i data-lucide="waves" class="w-6 h-6"></i>
+      </div>
+      <div>
+        <h1 class="font-bold text-lg text-slate-900 leading-tight tracking-tight flex items-center gap-2">
+          PondPlan AI
+          <span class="text-[10px] uppercase font-bold bg-blue-50 text-blue-600 border border-blue-200 px-2 py-0.5 rounded-full">v1.0 Live</span>
+        </h1>
+        <p class="text-xs text-slate-500">Autonomous Contour-Based Farm Pond Siting & Catchment Delineation</p>
+      </div>
+    </div>
+
+    <!-- Right Controls -->
+    <div class="flex items-center gap-3">
+      <div class="hidden md:flex items-center gap-2 text-xs font-mono bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        API: <span id="apiStatusBadge" class="text-emerald-700 font-semibold">Active (3241)</span>
+      </div>
+      <button id="btnPreloadSample" class="text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3.5 py-2 rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
+        <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+        <span>Load Survey Map</span>
+      </button>
+      <a href="/docs" target="_blank" class="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg transition-all flex items-center gap-1.5">
+        <i data-lucide="code" class="w-3.5 h-3.5"></i>
+        <span>Swagger API</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- MAIN APP WORKSPACE -->
+  <main class="flex h-[calc(100vh-65px)] relative">
+    
+    <!-- LEFT CONTROL SIDEBAR -->
+    <aside id="sidebar" class="w-[420px] bg-white border-r border-slate-200 flex flex-col h-full z-20 shadow-lg shrink-0 transition-all duration-300">
+      
+      <!-- TAB NAVIGATION -->
+      <div class="flex border-b border-slate-200 bg-slate-50 text-xs font-semibold">
+        <button id="tabBtnControls" class="flex-1 py-3 px-4 border-b-2 border-blue-600 text-blue-600 bg-white flex items-center justify-center gap-2">
+          <i data-lucide="sliders" class="w-4 h-4"></i> Configuration
+        </button>
+        <button id="tabBtnResults" class="flex-1 py-3 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center justify-center gap-2">
+          <i data-lucide="bar-chart-2" class="w-4 h-4"></i> Catchment Analytics
+        </button>
+      </div>
+
+      <!-- TAB 1: CONTROLS & SELECTION -->
+      <div id="tabContentControls" class="flex-1 overflow-y-auto p-5 space-y-5">
+        
+        <!-- STEP 1: CONTOUR FILE SELECTION -->
+        <section class="space-y-2.5">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[11px]">1</span>
+              Contour Map Upload
+            </label>
+            <span id="activeFileIndicator" class="text-[11px] font-mono text-slate-500 truncate max-w-[170px]">contours_1m.kml</span>
+          </div>
+
+          <div class="relative border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-xl p-4 text-center bg-slate-50/50 transition-all cursor-pointer group">
+            <input type="file" id="kmlFileInput" accept=".kml,.kmz" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+            <div class="space-y-1">
+              <i data-lucide="upload-cloud" class="w-7 h-7 mx-auto text-slate-400 group-hover:text-blue-500 transition-colors"></i>
+              <p class="text-xs font-semibold text-slate-700">Click to upload KML / KMZ</p>
+              <p class="text-[10px] text-slate-400">or drop your contour survey file here</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- STEP 2: LAND AREA SELECTION -->
+        <section class="space-y-2.5 p-3.5 rounded-xl bg-gradient-to-br from-amber-50/50 to-orange-50/30 border border-amber-200/80">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded-full bg-amber-600 text-white flex items-center justify-center text-[11px]">2</span>
+              Select Land Area (AOI)
+            </label>
+            <button id="btnClearAoi" class="hidden text-[11px] text-red-600 hover:underline flex items-center gap-0.5">
+              <i data-lucide="trash-2" class="w-3 h-3"></i> Clear Area
+            </button>
+          </div>
+          <p class="text-xs text-amber-800/80 leading-relaxed">
+            Choose a land parcel on the map to restrict the farm pond siting to your chosen boundary.
+          </p>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="btnDrawRectangle" class="text-xs font-semibold py-2 px-3 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition-all">
+              <i data-lucide="square" class="w-3.5 h-3.5 text-amber-600"></i> Draw Rectangle
+            </button>
+            <button id="btnDrawPolygon" class="text-xs font-semibold py-2 px-3 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition-all">
+              <i data-lucide="pentagon" class="w-3.5 h-3.5 text-amber-600"></i> Draw Polygon
+            </button>
+          </div>
+          <div id="aoiStatusBox" class="text-[11px] font-mono text-amber-800 bg-amber-100/60 p-2 rounded-lg border border-amber-200/60 hidden">
+            Selected Parcel: <span id="aoiCoordsText" class="font-bold">None</span>
+          </div>
+        </section>
+
+        <!-- STEP 3: HYDROLOGY & RAINFALL PARAMETERS -->
+        <section class="space-y-3.5">
+          <label class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+            <span class="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[11px]">3</span>
+            Precipitation & Soil Parameters
+          </label>
+
+          <!-- Annual Rainfall Slider -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between items-center text-xs">
+              <span class="font-semibold text-slate-700">Annual Rainfall:</span>
+              <span class="font-mono font-bold text-blue-600"><span id="valRainfall">1000</span> mm/yr</span>
+            </div>
+            <input type="range" id="inputRainfall" min="200" max="2500" step="50" value="1000" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+            <div class="flex justify-between text-[10px] text-slate-400 font-mono">
+              <span>200mm (Arid)</span>
+              <span>1000mm (Avg)</span>
+              <span>2500mm (Heavy)</span>
+            </div>
+          </div>
+
+          <!-- Soil Runoff Coefficient C -->
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-slate-700 flex justify-between">
+              <span>Soil & Land-use Runoff Coeff (C):</span>
+              <span class="font-mono font-bold text-blue-600" id="valCoeff">0.35</span>
+            </label>
+            <select id="selectCoeff" class="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-700 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
+              <option value="0.20">Sandy / Coarse Soil (Low Runoff, C = 0.20)</option>
+              <option value="0.35" selected>Agricultural Loam / Cultivated Land (Medium, C = 0.35)</option>
+              <option value="0.50">Clay / Heavy Black Soil (High Runoff, C = 0.50)</option>
+              <option value="0.70">Rocky / Hilly Barren Terrain (Very High, C = 0.70)</option>
+              <option value="custom">Custom Coefficient...</option>
+            </select>
+          </div>
+
+          <!-- Advanced DEM Grid Resolution -->
+          <div class="grid grid-cols-2 gap-3 pt-1">
+            <div class="space-y-1">
+              <label class="text-[11px] font-semibold text-slate-600">DEM Resolution (m)</label>
+              <input type="number" id="inputResolution" value="10.0" step="1.0" min="2.0" max="50.0" class="w-full text-xs font-mono p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700" />
+            </div>
+            <div class="space-y-1">
+              <label class="text-[11px] font-semibold text-slate-600">Min Catchment (m²)</label>
+              <input type="number" id="inputMinArea" value="500.0" step="100" min="100" class="w-full text-xs font-mono p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700" />
+            </div>
+          </div>
+        </section>
+
+        <!-- CTA BUTTON -->
+        <button id="btnRunAnalysis" class="w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-bold rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 transform active:scale-[0.99]">
+          <i data-lucide="play" class="w-4 h-4 fill-white"></i>
+          <span>Run Catchment Analysis</span>
+        </button>
+
+      </div>
+
+      <!-- TAB 2: RESULTS DASHBOARD -->
+      <div id="tabContentResults" class="flex-1 overflow-y-auto p-5 space-y-5 hidden">
+        
+        <div id="noResultsNotice" class="text-center py-12 space-y-3">
+          <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+            <i data-lucide="map" class="w-6 h-6"></i>
+          </div>
+          <p class="text-xs font-semibold text-slate-600">No analysis results yet</p>
+          <p class="text-[11px] text-slate-400 max-w-[220px] mx-auto">Click "Run Catchment Analysis" to evaluate the terrain and view metrics.</p>
+        </div>
+
+        <div id="resultsContent" class="space-y-4 hidden">
+          
+          <!-- WATER VOLUME HIGHLIGHT CARD -->
+          <div class="p-4 rounded-2xl bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white shadow-xl space-y-3 relative overflow-hidden">
+            <div class="absolute -right-6 -bottom-6 w-32 h-32 bg-white/10 rounded-full blur-xl pointer-events-none"></div>
+            
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] uppercase font-bold tracking-wider text-blue-200 flex items-center gap-1">
+                <i data-lucide="droplet" class="w-3.5 h-3.5"></i> Expected Water Yield
+              </span>
+              <span class="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-mono font-medium">Rational Method</span>
+            </div>
+
+            <div>
+              <div class="flex items-baseline gap-1.5">
+                <span id="resVolM3" class="text-3xl font-extrabold tracking-tight font-mono">15,505</span>
+                <span class="text-sm font-bold text-blue-200">m³ / year</span>
+              </div>
+              <p class="text-xs text-blue-100 mt-1 flex items-center gap-1.5">
+                ≈ <span id="resVolML" class="font-bold text-white font-mono">15.51</span> Million Liters (ML)
+              </p>
+            </div>
+
+            <!-- Equivalence badges -->
+            <div class="pt-2 border-t border-white/15 grid grid-cols-2 gap-2 text-[10px]">
+              <div class="bg-white/10 rounded-lg p-2">
+                <span class="text-blue-200 block">Olympic Pools:</span>
+                <span id="resEquivPools" class="font-bold text-white font-mono text-xs">6.2 Pools</span>
+              </div>
+              <div class="bg-white/10 rounded-lg p-2">
+                <span class="text-blue-200 block">Irrigation Days:</span>
+                <span id="resEquivIrrig" class="font-bold text-white font-mono text-xs">31 Days (5 ac)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- SUMMARY KPI GRID -->
+          <div class="grid grid-cols-2 gap-2.5">
+            
+            <!-- Catchment Area -->
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <span class="text-[10px] uppercase font-bold text-slate-400 block">Catchment Area</span>
+              <span id="resAreaM2" class="text-base font-extrabold text-slate-800 font-mono">44,300</span>
+              <span class="text-[11px] text-slate-500 block"><span id="resAreaHa" class="font-bold text-blue-600">4.43</span> Hectares</span>
+            </div>
+
+            <!-- Sited Elevation -->
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <span class="text-[10px] uppercase font-bold text-slate-400 block">Pond Elevation</span>
+              <span id="resPondElev" class="text-base font-extrabold text-slate-800 font-mono">270.0 m</span>
+              <span class="text-[11px] text-slate-500 block">Relief: <span id="resRelief" class="font-bold text-slate-700">23.0 m</span></span>
+            </div>
+
+            <!-- Mean Slope -->
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <span class="text-[10px] uppercase font-bold text-slate-400 block">Mean Slope</span>
+              <span id="resMeanSlope" class="text-base font-extrabold text-slate-800 font-mono">4.80 %</span>
+              <span class="text-[11px] text-slate-500 block">Max: <span id="resMaxSlope" class="font-bold text-slate-700">28.6 %</span></span>
+            </div>
+
+            <!-- Flow Accumulation -->
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <span class="text-[10px] uppercase font-bold text-slate-400 block">Flow Accumulation</span>
+              <span id="resFlowCells" class="text-base font-extrabold text-slate-800 font-mono">310</span>
+              <span class="text-[11px] text-slate-500 block">Contributing Cells</span>
+            </div>
+
+          </div>
+
+          <!-- GEOGRAPHICAL COORDINATES -->
+          <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs font-mono">
+            <span class="text-[10px] uppercase font-bold text-slate-400 font-sans block">Pond Site Coordinates</span>
+            <div class="flex justify-between text-slate-700">
+              <span>Latitude:</span>
+              <span id="resPondLat" class="font-bold text-slate-900">21.251833° N</span>
+            </div>
+            <div class="flex justify-between text-slate-700">
+              <span>Longitude:</span>
+              <span id="resPondLon" class="font-bold text-slate-900">81.296571° E</span>
+            </div>
+          </div>
+
+          <!-- DOWNLOAD BUTTONS -->
+          <div class="space-y-2 pt-2">
+            <button id="btnDownloadGeoJson" class="w-full py-2.5 px-3 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm">
+              <i data-lucide="download" class="w-3.5 h-3.5 text-blue-600"></i> Download Catchment GeoJSON
+            </button>
+            <button id="btnExportReport" class="w-full py-2.5 px-3 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm">
+              <i data-lucide="file-text" class="w-3.5 h-3.5 text-slate-600"></i> Export JSON Result Payload
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- FOOTER STATUS -->
+      <div class="p-3 bg-slate-100 border-t border-slate-200 text-[11px] text-slate-500 flex items-center justify-between">
+        <span id="runtimeIndicator">Ready</span>
+        <span class="text-[10px] font-mono">512MB Optimized</span>
+      </div>
+
+    </aside>
+
+    <!-- MAP CONTAINER -->
+    <div class="flex-1 relative h-full">
+      
+      <!-- LEAFLET MAP -->
+      <div id="map"></div>
+
+      <!-- FLOATING OVERLAY: MAP LEGEND -->
+      <div class="absolute bottom-6 right-6 glass-card p-3 rounded-xl shadow-xl z-20 space-y-2 text-xs">
+        <span class="font-bold text-slate-700 text-[11px] uppercase tracking-wider block">Map Layers</span>
+        <div class="flex items-center gap-2">
+          <span class="w-3.5 h-3.5 rounded-full bg-cyan-500 border-2 border-white shadow-sm"></span>
+          <span class="text-slate-600 font-medium">Catchment Boundary</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-3.5 h-3.5 rounded-full bg-blue-600 border-2 border-white shadow-sm ring-2 ring-blue-400/50"></span>
+          <span class="text-slate-600 font-medium">Optimal Pond Site</span>
+        </div>
+        <div class="flex items-center gap-2" id="legendAoiRow" style="display:none;">
+          <span class="w-3.5 h-3.5 rounded bg-amber-400 border border-amber-600"></span>
+          <span class="text-slate-600 font-medium">Selected Land Area (AOI)</span>
+        </div>
+      </div>
+
+      <!-- LOADING SPINNER OVERLAY -->
+      <div id="loadingOverlay" class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-30 flex flex-col items-center justify-center text-white hidden">
+        <div class="w-14 h-14 border-4 border-white/20 border-t-cyan-400 rounded-full animate-spin mb-3"></div>
+        <p class="text-sm font-bold tracking-wide">Processing Terrain Hydrology...</p>
+        <p class="text-xs text-slate-200 mt-1 font-mono">D8 Routing & Catchment Delineation</p>
+      </div>
+
+    </div>
+
+  </main>
+
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    // --------------------------------------------------------------------------
+    // 1. LEAFLET MAP SETUP
+    // --------------------------------------------------------------------------
+    const map = L.map('map', {
+      center: [21.2518, 81.2965],
+      zoom: 14,
+      zoomControl: false
+    });
+
+    L.control.zoom({ position: 'topright' }).addTo(map);
+
+    // Base Layers
+    const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+      maxZoom: 19
+    });
+
+    const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19
+    });
+
+    const topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+      attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap (CC-BY-SA)',
+      maxZoom: 17
+    });
+
+    satelliteLayer.addTo(map);
+
+    L.control.layers({
+      "Satellite (Esri)": satelliteLayer,
+      "OpenStreetMap": streetLayer,
+      "Topographic Map": topoLayer
+    }, null, { position: 'topright' }).addTo(map);
+
+    // Feature Layers
+    const drawnItems = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+
+    let catchmentLayer = null;
+    let pondMarker = null;
+    let currentAnalysisData = null;
+    let selectedAoiBounds = null; // [min_lon, min_lat, max_lon, max_lat]
+
+    // --------------------------------------------------------------------------
+    // 2. LEAFLET DRAW TOOLING FOR LAND AREA SELECTION
+    // --------------------------------------------------------------------------
+    const drawControl = new L.Control.Draw({
+      position: 'topleft',
+      draw: {
+        polyline: false,
+        circle: false,
+        circlemarker: false,
+        marker: false,
+        rectangle: {
+          shapeOptions: {
+            color: '#d97706',
+            weight: 2,
+            dashArray: '5, 5',
+            fillColor: '#fef3c7',
+            fillOpacity: 0.35
+          }
+        },
+        polygon: {
+          shapeOptions: {
+            color: '#d97706',
+            weight: 2,
+            dashArray: '5, 5',
+            fillColor: '#fef3c7',
+            fillOpacity: 0.35
+          }
+        }
+      },
+      edit: {
+        featureGroup: drawnItems,
+        remove: true
+      }
+    });
+    map.addControl(drawControl);
+
+    map.on(L.Draw.Event.CREATED, function (e) {
+      drawnItems.clearLayers();
+      const layer = e.layer;
+      drawnItems.addLayer(layer);
+
+      const b = layer.getBounds();
+      selectedAoiBounds = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+      
+      // Update UI
+      document.getElementById('btnClearAoi').classList.remove('hidden');
+      document.getElementById('aoiStatusBox').classList.remove('hidden');
+      document.getElementById('legendAoiRow').style.display = 'flex';
+      document.getElementById('aoiCoordsText').innerText = 
+        `${b.getSouth().toFixed(4)}°N, ${b.getWest().toFixed(4)}°E to ${b.getNorth().toFixed(4)}°N, ${b.getEast().toFixed(4)}°E`;
+    });
+
+    document.getElementById('btnClearAoi').addEventListener('click', () => {
+      drawnItems.clearLayers();
+      selectedAoiBounds = null;
+      document.getElementById('btnClearAoi').classList.add('hidden');
+      document.getElementById('aoiStatusBox').classList.add('hidden');
+      document.getElementById('legendAoiRow').style.display = 'none';
+    });
+
+    document.getElementById('btnDrawRectangle').addEventListener('click', () => {
+      new L.Draw.Rectangle(map, drawControl.options.draw.rectangle).enable();
+    });
+
+    document.getElementById('btnDrawPolygon').addEventListener('click', () => {
+      new L.Draw.Polygon(map, drawControl.options.draw.polygon).enable();
+    });
+
+    // --------------------------------------------------------------------------
+    // 3. TAB CONTROLS
+    // --------------------------------------------------------------------------
+    const tabBtnControls = document.getElementById('tabBtnControls');
+    const tabBtnResults = document.getElementById('tabBtnResults');
+    const tabContentControls = document.getElementById('tabContentControls');
+    const tabContentResults = document.getElementById('tabContentResults');
+
+    tabBtnControls.addEventListener('click', () => {
+      tabBtnControls.className = "flex-1 py-3 px-4 border-b-2 border-blue-600 text-blue-600 bg-white flex items-center justify-center gap-2";
+      tabBtnResults.className = "flex-1 py-3 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center justify-center gap-2";
+      tabContentControls.classList.remove('hidden');
+      tabContentResults.classList.add('hidden');
+    });
+
+    tabBtnResults.addEventListener('click', () => {
+      tabBtnResults.className = "flex-1 py-3 px-4 border-b-2 border-blue-600 text-blue-600 bg-white flex items-center justify-center gap-2";
+      tabBtnControls.className = "flex-1 py-3 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center justify-center gap-2";
+      tabContentResults.classList.remove('hidden');
+      tabContentControls.classList.add('hidden');
+    });
+
+    // --------------------------------------------------------------------------
+    // 4. PARAMETERS SLIDERS
+    // --------------------------------------------------------------------------
+    const inputRainfall = document.getElementById('inputRainfall');
+    const valRainfall = document.getElementById('valRainfall');
+    inputRainfall.addEventListener('input', (e) => {
+      valRainfall.innerText = e.target.value;
+      if (currentAnalysisData) recalculateWaterVolume();
+    });
+
+    const selectCoeff = document.getElementById('selectCoeff');
+    const valCoeff = document.getElementById('valCoeff');
+    selectCoeff.addEventListener('change', (e) => {
+      valCoeff.innerText = e.target.value;
+      if (currentAnalysisData) recalculateWaterVolume();
+    });
+
+    // --------------------------------------------------------------------------
+    // 5. RUN ANALYSIS & API INTEGRATION
+    // --------------------------------------------------------------------------
+    let selectedCustomFile = null;
+
+    document.getElementById('kmlFileInput').addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        selectedCustomFile = e.target.files[0];
+        document.getElementById('activeFileIndicator').innerText = selectedCustomFile.name;
+      }
+    });
+
+    document.getElementById('btnPreloadSample').addEventListener('click', () => {
+      selectedCustomFile = null;
+      document.getElementById('activeFileIndicator').innerText = 'contours_1m.kml';
+      runAnalysis();
+    });
+
+    document.getElementById('btnRunAnalysis').addEventListener('click', runAnalysis);
+
+    async function runAnalysis() {
+      const overlay = document.getElementById('loadingOverlay');
+      const runtimeIndicator = document.getElementById('runtimeIndicator');
+      overlay.classList.remove('hidden');
+      runtimeIndicator.innerText = "Analyzing terrain...";
+
+      try {
+        const formData = new FormData();
+
+        // 1. File payload
+        if (selectedCustomFile) {
+          formData.append('contour_map', selectedCustomFile);
+        } else {
+          // Fetch preloaded sample KML from backend
+          const res = await fetch('/api/sample-kml');
+          if (!res.ok) throw new Error("Could not fetch server sample KML");
+          const blob = await res.blob();
+          formData.append('contour_map', blob, 'contours_1m.kml');
+        }
+
+        // 2. Form parameters
+        formData.append('resolution_m', document.getElementById('inputResolution').value || '10.0');
+        formData.append('min_catchment_area_m2', document.getElementById('inputMinArea').value || '500.0');
+        formData.append('rainfall_mm', inputRainfall.value || '1000.0');
+        formData.append('runoff_coefficient', selectCoeff.value === 'custom' ? '0.35' : selectCoeff.value);
+
+        // 3. Selected Land Area AOI (if drawn)
+        if (selectedAoiBounds) {
+          formData.append('selected_bounds', JSON.stringify(selectedAoiBounds));
+        }
+
+        const response = await fetch('/analyzeContour', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.detail || `Server returned HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        currentAnalysisData = data;
+        renderAnalysisResults(data);
+
+        // Switch to Results Tab
+        tabBtnResults.click();
+        runtimeIndicator.innerText = `Completed in ${data.processing_time_ms} ms`;
+
+      } catch (err) {
+        alert(`Analysis Error: ${err.message}`);
+        runtimeIndicator.innerText = `Error: ${err.message}`;
+      } finally {
+        overlay.classList.add('hidden');
+      }
+    }
+
+    // --------------------------------------------------------------------------
+    // 6. RENDER RESULTS ON MAP & DASHBOARD
+    // --------------------------------------------------------------------------
+    function renderAnalysisResults(data) {
+      // 1. Clear existing layers
+      if (catchmentLayer) map.removeLayer(catchmentLayer);
+      if (pondMarker) map.removeLayer(pondMarker);
+
+      // 2. Overlay Catchment Polygon
+      const geojson = data.catchment.boundary_geojson;
+      catchmentLayer = L.geoJSON(geojson, {
+        style: {
+          color: '#0284c7',
+          weight: 3,
+          opacity: 0.9,
+          fillColor: '#38bdf8',
+          fillOpacity: 0.35
+        }
+      }).addTo(map);
+
+      // Fit map bounds to catchment
+      map.fitBounds(catchmentLayer.getBounds(), { padding: [50, 50] });
+
+      // 3. Overlay Pond Marker with Custom Icon
+      const pond = data.pond_site;
+      const pondIcon = L.divIcon({
+        className: 'custom-pond-icon',
+        html: `
+          <div class="relative flex items-center justify-center">
+            <div class="w-8 h-8 rounded-full bg-blue-500/40 water-pulse absolute"></div>
+            <div class="w-7 h-7 rounded-full bg-blue-600 border-2 border-white text-white flex items-center justify-center shadow-lg relative z-10">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+            </div>
+          </div>
+        `,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+
+      pondMarker = L.marker([pond.lat, pond.lon], { icon: pondIcon }).addTo(map);
+
+      const popupContent = `
+        <div class="p-1 space-y-1.5 font-sans">
+          <div class="font-bold text-xs text-blue-900 border-b pb-1 flex items-center gap-1">
+            <span>💧 Suggested Pond Site</span>
+          </div>
+          <div class="text-[11px] space-y-1 text-slate-700">
+            <div><strong>Elevation:</strong> ${pond.elevation_m.toFixed(1)} m AMSL</div>
+            <div><strong>Catchment:</strong> ${data.catchment.area_hectares} ha (${data.catchment.area_m2.toLocaleString()} m²)</div>
+            <div><strong>Annual Yield:</strong> ${(data.catchment.expected_water_volume_m3 || 0).toLocaleString()} m³</div>
+            <div><strong>Coordinates:</strong> ${pond.lat.toFixed(6)}°, ${pond.lon.toFixed(6)}°</div>
+          </div>
+        </div>
+      `;
+      pondMarker.bindPopup(popupContent).openPopup();
+
+      // 4. Populate Results Dashboard
+      document.getElementById('noResultsNotice').classList.add('hidden');
+      document.getElementById('resultsContent').classList.remove('hidden');
+
+      document.getElementById('resAreaM2').innerText = data.catchment.area_m2.toLocaleString();
+      document.getElementById('resAreaHa').innerText = data.catchment.area_hectares.toFixed(2);
+      document.getElementById('resPondElev').innerText = `${pond.elevation_m.toFixed(1)} m`;
+      document.getElementById('resRelief').innerText = `${data.catchment.relief_m.toFixed(1)} m`;
+      document.getElementById('resMeanSlope').innerText = `${data.catchment.mean_slope_pct.toFixed(2)} %`;
+      document.getElementById('resMaxSlope').innerText = `${data.catchment.max_slope_pct.toFixed(1)} %`;
+      document.getElementById('resFlowCells').innerText = pond.flow_accumulation_cells.toLocaleString();
+      document.getElementById('resPondLat').innerText = `${pond.lat.toFixed(6)}° N`;
+      document.getElementById('resPondLon').innerText = `${pond.lon.toFixed(6)}° E`;
+
+      recalculateWaterVolume();
+    }
+
+    // Dynamic water volume recalculator
+    function recalculateWaterVolume() {
+      if (!currentAnalysisData) return;
+      const areaM2 = currentAnalysisData.catchment.area_m2;
+      const rainMm = parseFloat(inputRainfall.value) || 1000.0;
+      const coeff = selectCoeff.value === 'custom' ? 0.35 : (parseFloat(selectCoeff.value) || 0.35);
+
+      const volM3 = Math.round(areaM2 * (rainMm / 1000.0) * coeff);
+      const volML = (volM3 / 1000.0).toFixed(2);
+      const olympicPools = (volM3 / 2500.0).toFixed(1); // 1 Olympic pool ~ 2,500 m3
+      const irrigDays = Math.round(volM3 / 500.0);      // 500 m3/day for 5 acres
+
+      document.getElementById('resVolM3').innerText = volM3.toLocaleString();
+      document.getElementById('resVolML').innerText = volML;
+      document.getElementById('resEquivPools').innerText = `${olympicPools} Pools`;
+      document.getElementById('resEquivIrrig').innerText = `${irrigDays} Days (5 ac)`;
+    }
+
+    // --------------------------------------------------------------------------
+    // 7. EXPORT & DOWNLOAD HELPERS
+    // --------------------------------------------------------------------------
+    document.getElementById('btnDownloadGeoJson').addEventListener('click', () => {
+      if (!currentAnalysisData) return;
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentAnalysisData.catchment.boundary_geojson, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", "pond_catchment_boundary.geojson");
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    });
+
+    document.getElementById('btnExportReport').addEventListener('click', () => {
+      if (!currentAnalysisData) return;
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentAnalysisData, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", "pond_analysis_results.json");
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    });
+
+    // Auto-run initial analysis on load
+    window.addEventListener('load', () => {
+      runAnalysis();
+    });
+  </script>
+</body>
+</html>

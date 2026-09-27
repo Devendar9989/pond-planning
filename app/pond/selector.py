@@ -1,4 +1,4 @@
-"""Multi-criteria heuristic pond site selection algorithm."""
+"""Multi-criteria heuristic pond site selection algorithm with optional land area AOI support."""
 
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -30,6 +30,7 @@ def select_pond_site(
     hydro: HydrologyResult,
     min_catchment_area_m2: float = DEFAULT_MIN_CATCHMENT_AREA_M2,
     border_margin: int = BORDER_CELL_MARGIN,
+    selected_bounds: Optional[Tuple[float, float, float, float]] = None,
 ) -> PondSiteCandidate:
     """
     Evaluates candidate cells across the terrain to select the optimal pond location.
@@ -39,12 +40,14 @@ def select_pond_site(
     2. Low to moderate slope (natural flat area / depression for water storage).
     3. Interior safety buffer (avoids edge truncation artifacts).
     4. Minimum upstream catchment area threshold.
+    5. Optional user-selected land area constraint (AOI bounding box [min_lon, min_lat, max_lon, max_lat]).
 
     Args:
         dem: Interpolated DEMGrid.
         hydro: HydrologyResult containing filled DEM, slope, and flow accumulation.
         min_catchment_area_m2: Minimum required upstream catchment area in m².
         border_margin: Number of perimeter cells excluded from candidate selection.
+        selected_bounds: Optional (min_lon, min_lat, max_lon, max_lat) to restrict pond search area.
 
     Returns:
         PondSiteCandidate containing geographical coordinates and elevation.
@@ -64,6 +67,23 @@ def select_pond_site(
     candidate_mask = np.zeros((nrows, ncols), dtype=bool)
     candidate_mask[margin: nrows - margin, margin: ncols - margin] = True
 
+    # Apply selected land area (AOI) bounding box if provided by user
+    if selected_bounds is not None:
+        min_lon, min_lat, max_lon, max_lat = selected_bounds
+        transformer_to_utm = Transformer.from_crs("EPSG:4326", f"EPSG:{dem.utm_epsg}", always_xy=True)
+        min_utm_x, min_utm_y = transformer_to_utm.transform(min_lon, min_lat)
+        max_utm_x, max_utm_y = transformer_to_utm.transform(max_lon, max_lat)
+
+        utm_xmin, utm_xmax = min(min_utm_x, max_utm_x), max(min_utm_x, max_utm_x)
+        utm_ymin, utm_ymax = min(min_utm_y, max_utm_y), max(min_utm_y, max_utm_y)
+
+        # Create 2D coordinate mesh for checking bounds
+        xx, yy = np.meshgrid(dem.x_coords, dem.y_coords)
+        aoi_mask = (xx >= utm_xmin) & (xx <= utm_xmax) & (yy >= utm_ymin) & (yy <= utm_ymax)
+
+        if np.any(candidate_mask & aoi_mask):
+            candidate_mask = candidate_mask & aoi_mask
+
     # Calculate upstream area for each cell
     accum_cells = hydro.flow_accumulation
     accum_area_m2 = accum_cells * cell_area_m2
@@ -73,10 +93,9 @@ def select_pond_site(
 
     # Fallback if no cell satisfies the area threshold
     if not np.any(valid_mask):
-        # Pick the interior cell with the maximum available accumulation
         valid_mask = candidate_mask
         if not np.any(valid_mask):
-            raise ValueError("DEM grid is too small or flat to select a valid pond site.")
+            raise ValueError("No valid cell found within the selected land area satisfying the minimum catchment area.")
 
     # Multi-criteria scoring
     # 1. Logarithmic flow accumulation (diminishing returns beyond huge channels)
