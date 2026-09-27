@@ -23,7 +23,7 @@
 
 \author{Devendar}
 \affiliation{%
-  \institution{Department of Computer Science and Engineering, IIT Bhilai}
+  \institution{Department of Computer Science and Engineering, Indian Institute of Technology Bhilai}
   \city{Bhilai}
   \state{Chhattisgarh}
   \country{India}}
@@ -33,7 +33,7 @@
 
 %% =================== ABSTRACT ======================================
 \begin{abstract}
-Rural water security in agrarian drylands depends critically on the strategic placement of on-farm rainwater harvesting reservoirs (farm ponds). Manual topographical surveying across large geographic extents is labor-intensive, error-prone, and lacks quantitative runoff modeling. This report presents \textbf{PondPlan AI}, an autonomous geospatial system and interactive Web GIS application for contour-based farm pond siting, upstream catchment delineation, and expected harvestable water volume estimation. The platform ingests topographic contour survey maps in KML/KMZ formats, constructs regularized metric Digital Elevation Models (DEMs) via automated UTM reprojection, and models hydrological runoff dynamics using vectorized pure-NumPy algorithms (Priority-Flood depression filling, 2nd-order slope calculation, D8 steepest descent routing, and $O(N)$ topological in-degree flow accumulation). A multi-criteria heuristic identifies optimal pond outlet sites based on upstream accumulation ($70\%$), terrain slope ($\le 8\%$, $30\%$), and natural concave depression storage depth. Upstream contributing catchments are delineated via reverse-D8 Breadth-First Search (BFS) and converted into simplified WGS84 GeoJSON polygons. An interactive Leaflet.js Web Front-End provides multi-layer satellite and topographic mapping, interactive land area (AOI) bounding-box and polygon drawing tools, real-time precipitation/soil runoff parameter sliders, and real-time visualization of the pond location, catchment boundary, and water harvesting yield. On the reference survey map (\texttt{contours\_1m.kml}), the system isolates an optimal pond outlet at $21.251833^\circ\text{N}, 81.296571^\circ\text{E}$ ($270.0\text{m}$ AMSL) draining a $44,300\text{ m}^2$ ($4.43\text{ ha}$) watershed, yielding an annual harvestable volume of $15,505.0\text{ m}^3$ ($15.51\text{ Million Liters}$) within $2.45\text{ seconds}$ while operating strictly within a 512MB RAM constraint. The service is deployed across the IIT Bhilai campus network at \url{http://10.1.75.51:6241/} (internal port 6000), \url{http://10.1.75.51:5241/} (internal port 5000), and \url{http://10.1.75.51:3241/} (internal port 3000).
+Rural water security in semi-arid and rainfed agrarian regions depends critically on the optimal placement of on-farm rainwater harvesting reservoirs (farm ponds). Traditional manual surveying across extensive agricultural parcels is labor-intensive, error-prone, and lacks quantitative hydrological runoff modeling. This report presents \textbf{PondPlan AI}, an autonomous geospatial microservice platform and interactive Web GIS application for contour-based farm pond siting, upstream watershed delineation, and expected harvestable water volume estimation. The backend pipeline ingests raw topographic contour elevation survey files in KML/KMZ formats, constructs regularized metric Digital Elevation Models (DEMs) via automated Universal Transverse Mercator (UTM) reprojection, and executes hydrological surface runoff modeling using vectorized pure-NumPy algorithms (Priority-Flood depression filling, 2nd-order slope calculation, D8 steepest descent routing, and $O(N)$ topological in-degree flow accumulation). A multi-criteria heuristic identifies the optimal pond outlet site by evaluating upstream accumulation ($70\%$), terrain slope ($\le 8\%$, $30\%$), and concave depression storage depth. Upstream contributing catchments are delineated via reverse-D8 Breadth-First Search (BFS) and converted into simplified WGS84 GeoJSON polygons. An interactive Leaflet.js Web Front-End provides multi-layer satellite and topographic mapping, interactive land area (AOI) bounding-box and polygon drawing tools, real-time precipitation/soil runoff parameter sliders, and real-time visualization of the pond location, catchment boundary, and water harvesting yield. On the reference survey map (\texttt{contours\_1m.kml}), the system isolates an optimal pond outlet at $21.251833^\circ\text{N}, 81.296571^\circ\text{E}$ ($270.0\text{m}$ AMSL) draining a $44,300\text{ m}^2$ ($4.43\text{ ha}$) watershed, yielding an annual harvestable volume of $15,505.0\text{ m}^3$ ($15.51\text{ Million Liters}$) within $2.45\text{ seconds}$ while operating strictly within a 512MB RAM constraint. The service is deployed across the IIT Bhilai campus network at \url{http://10.1.75.51:6241/} (internal port 6000), \url{http://10.1.75.51:5241/} (internal port 5000), and \url{http://10.1.75.51:3241/} (internal port 3000).
 \end{abstract}
 
 \keywords{Village Pond Planning, Geospatial Analysis, Rainwater Harvesting, Catchment Estimation, Digital Elevation Models, Web GIS, REST APIs, Pure-NumPy Hydrology}
@@ -43,7 +43,7 @@ Rural water security in agrarian drylands depends critically on the strategic pl
 %% =====================================================================
 \section{Introduction}
 \label{sec:intro}
-Rainwater harvesting through on-farm ponds represents one of the most cost-effective interventions for mitigating agricultural drought, recharging groundwater tables, and sustaining secondary irrigation during dry spells. In rural India, village administrators and agricultural planners must identify optimal locations for micro-reservoirs that maximize captured surface runoff while minimizing excavation costs and preventing catastrophic embankment erosion.
+Rainwater harvesting through on-farm ponds represents one of the most cost-effective interventions for mitigating agricultural drought, recharging groundwater tables, and sustaining secondary irrigation during dry spells in rural India. Village administrators, agricultural extension officers, and farmers must identify optimal locations for micro-reservoirs that maximize captured surface runoff while minimizing excavation costs and preventing catastrophic embankment erosion.
 
 The goal of this assignment is to develop an automated, web-accessible geospatial platform that accepts topographic elevation contour maps, performs comprehensive hydrological analysis, enables users to select specific land areas directly on a map, recommends optimal farm pond locations, delineates upstream drainage basins, and calculates harvestable water volume. The system is designed as a modular, resource-optimized service capable of running on severely constrained hardware (512MB RAM, 1 vCPU, 1.5GB disk).
 
@@ -100,8 +100,8 @@ The functional requirements defined for the system and the corresponding impleme
 \subsection{Non-Functional Requirements}
 \begin{itemize}[noitemsep]
     \item \textbf{Memory Budget Safety ($<512\text{MB}$ RAM):} The entire pipeline strictly avoids heavy C/C++ GIS frameworks (GDAL, rasterio, richdem, pysheds). An automated grid coarsening guard rail dynamically scales grid cell size if the computed raster exceeds $150,000$ cells, preventing out-of-memory kernel termination.
-    \item \textbf{Response Time & Latency:} Complete end-to-end contour parsing, DEM generation, hydrological routing, and polygonization executes in under $3.0\text{ seconds}$ for a $3.2\text{km} \times 2.6\text{km}$ survey map.
-    \item \textbf{Zero Hardcoding & Generalizability:} Every coordinate, elevation range, contour interval, and watershed boundary is computed dynamically at request time, ensuring compatibility with any global KML/KMZ dataset.
+    \item \textbf{Response Time \& Latency:} Complete end-to-end contour parsing, DEM generation, hydrological routing, and polygonization executes in under $3.0\text{ seconds}$ for a $3.2\text{km} \times 2.6\text{km}$ survey map.
+    \item \textbf{Zero Hardcoding \& Generalizability:} Every coordinate, elevation range, contour interval, and watershed boundary is computed dynamically at request time, ensuring compatibility with any global KML/KMZ dataset.
     \item \textbf{Continuous Availability:} The backend runs with auto-restarting watchdog scripts across internal ports 6000, 5000, and 3000, exposed across the IIT Bhilai campus network.
 \end{itemize}
 
@@ -159,7 +159,7 @@ The system architecture follows a stateless, decoupled design pattern separating
     \item \textbf{Computational Hydrology Engine:} Vectorized \texttt{numpy} and \texttt{scipy.interpolate} (griddata barycentric interpolation).
     \item \textbf{Vector Geometry Processing:} \texttt{shapely} (\texttt{unary\_union}, topological simplification, GeoJSON export).
     \item \textbf{KML Parsing:} \texttt{lxml} (C-optimized XML parsing with namespace-agnostic local-name matching).
-    \item \textbf{Front-End & Mapping:} Leaflet.js 1.9.4, Leaflet Draw, Tailwind CSS, Lucide Icons, Chart.js.
+    \item \textbf{Front-End \& Mapping:} Leaflet.js 1.9.4, Leaflet Draw, Tailwind CSS, Lucide Icons, Chart.js.
 \end{itemize}
 
 %% =====================================================================
@@ -187,7 +187,7 @@ z_{\text{filled}}(c) = \max\left(z_{\text{raw}}(c), z_{\text{spill}}(n)\right)
 \end{equation}
 
 \subsection{Catchment Area Delineation}
-\paragraph{D8 Flow Routing & $O(N)$ Topological Flow Accumulation:} Runoff is routed to the steepest downward neighbor $j \in \mathcal{N}_8(i)$:
+\paragraph{D8 Flow Routing \& $O(N)$ Topological Flow Accumulation:} Runoff is routed to the steepest downward neighbor $j \in \mathcal{N}_8(i)$:
 \begin{equation}
 S_{i,j} = \frac{z_{\text{filled}}(i) - z_{\text{filled}}(j)}{d_{i,j}}, \quad d_{i,j} = \begin{cases} \Delta x & \text{orthogonal} \\ \sqrt{2}\Delta x & \text{diagonal} \end{cases}
 \end{equation}
@@ -199,7 +199,7 @@ Rather than using recursive flood fills that cause stack overflow on large grids
 \end{equation}
 where $f(\text{Slope})$ assigns full weight to slopes $\le 8\%$ and penalizes slopes $>8\%$.
 
-\paragraph{Reverse-D8 Watershed Traversal & Polygonization:} From the selected pond outlet, a Breadth-First Search (BFS) traverses upstream flow vectors. Raster cell bounding boxes are dissolved using Shapely \texttt{unary\_union}, topologically simplified with half-pixel tolerance, and reprojected into WGS84 GeoJSON polygons.
+\paragraph{Reverse-D8 Watershed Traversal \& Polygonization:} From the selected pond outlet, a Breadth-First Search (BFS) traverses upstream flow vectors. Raster cell bounding boxes are dissolved using Shapely \texttt{unary\_union}, topologically simplified with half-pixel tolerance, and reprojected into WGS84 GeoJSON polygons.
 
 \subsection{Rainfall Data Integration and Water Volume Formulation}
 Harvestable water runoff volume is calculated using the hydrological Rational Runoff Method:
@@ -231,13 +231,6 @@ The web interface (\texttt{app/static/index.html}) is served directly at the roo
     \item \textbf{Dynamic Water Volume Calculator:} Real-time sliders for precipitation and soil coefficients with live equivalence metrics (Olympic swimming pools and days of 5-acre irrigation).
     \item \textbf{Export Utilities:} Direct buttons to download the Catchment GeoJSON boundary and export the full JSON report.
 \end{enumerate}
-
-\begin{figure}[h]
-  \centering
-  \includegraphics[width=0.85\linewidth]{catchment_visualization.png}
-  \caption{Application terrain and catchment analysis visualization for \texttt{contours\_1m.kml}: (A) Reconstructed DEM with selected pond site; (B) Delineated upstream catchment boundary.}
-  \label{fig:results_vis}
-\end{figure}
 
 \subsection{Database and Storage}
 The service utilizes a stateless, in-memory processing architecture with disk-streamed temporary buffering (64KB chunks) for file uploads. This eliminates disk exhaustion and persistent database bottlenecks, allowing seamless horizontal replication across worker nodes.
