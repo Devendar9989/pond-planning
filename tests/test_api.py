@@ -17,6 +17,22 @@ def test_health_endpoint():
     assert response.json() == {"status": "ok"}
 
 
+def test_root_frontend_endpoint():
+    """Verify that root GET / serves the Pond Planning Web Front-End (PondPlan AI)."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "PondPlan AI" in response.text
+    assert "Farm Pond Siting" in response.text
+    assert "Catchment Delineation" in response.text
+
+
+def test_sample_kml_endpoint():
+    """Verify that GET /api/sample-kml returns the preloaded survey map."""
+    response = client.get("/api/sample-kml")
+    assert response.status_code == 200
+    assert len(response.content) > 1000
+
+
 def test_analyze_contour_invalid_file_extension():
     """Verify 400 error on non-KML/KMZ upload."""
     files = {"file": ("test.txt", io.BytesIO(b"random text content"), "text/plain")}
