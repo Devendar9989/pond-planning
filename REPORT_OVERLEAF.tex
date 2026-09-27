@@ -84,10 +84,10 @@ The functional requirements defined for the system and the corresponding impleme
     \textbf{Functional Requirement} & \textbf{Implemented in Module / File} \\
     \midrule
     Satellite \& Topographic Map Display & \texttt{app/static/index.html} (Leaflet.js multi-layer base map switcher) \\
-    Contour Map Parsing \& Ingestion & \texttt{app/parser/kml_parser.py} (Namespace-agnostic XML/KMZ parser) \\
-    Metric DEM Reconstruction & \texttt{app/dem/dem_builder.py} (\texttt{pyproj} UTM + \texttt{scipy.interpolate.griddata}) \\
+    Contour Map Parsing \& Ingestion & \texttt{app/parser/kml\_parser.py} (Namespace-agnostic XML/KMZ parser) \\
+    Metric DEM Reconstruction & \texttt{app/dem/dem\_builder.py} (\texttt{pyproj} UTM + \texttt{scipy.interpolate.griddata}) \\
     Available-Land / AOI Area Selection & \texttt{app/static/index.html} + \texttt{app/pond/selector.py} (Leaflet Draw AOI mask) \\
-    Catchment Area Delineation & \texttt{app/pond/catchment.py} (Reverse-D8 BFS + Shapely \texttt{unary_union}) \\
+    Catchment Area Delineation & \texttt{app/pond/catchment.py} (Reverse-D8 BFS + Shapely \texttt{unary\_union}) \\
     Rainfall Data \& Precipitation Input & \texttt{app/main.py} + \texttt{app/static/index.html} (API form-data + interactive slider) \\
     Runoff Volume Estimation & \texttt{app/pond/catchment.py} (Rational Runoff Model $V = A \cdot P \cdot C$) \\
     Optimal Pond Siting Recommendation & \texttt{app/pond/selector.py} (Multi-criteria heuristic: accumulation, slope, sink) \\
@@ -142,7 +142,7 @@ The system architecture follows a stateless, decoupled design pattern separating
 |  - Land Area AOI Filtering: Restricts candidate cells inside user's drawn boundary            |
 |  - Multi-Criteria Siting Heuristic: Accumulation (70%) + Slope <= 8% (30%) + Sink Depth       |
 |  - Reverse-D8 BFS Watershed Tracing: Traverses upstream contributing area                     |
-|  - Vector Boundary Polygonization: Shapely unary_union -> WGS84 GeoJSON                       |
+|  - Vector Boundary Polygonization: Shapely unary\_union -> WGS84 GeoJSON                       |
 |  - Hydrological Water Volume Engine: Rational Runoff Method (m³, Liters, Million Liters)      |
 +-----------------------------------------------------------------------------------------------+
   \end{verbatim}
@@ -179,10 +179,10 @@ z_{\text{filled}}(c) = \max\left(z_{\text{raw}}(c), z_{\text{spill}}(n)\right)
 
 \paragraph{2nd-Order Terrain Slope Calculation:} Topographic surface slope is derived via central difference gradient operators:
 \begin{equation}
-\frac{\partial z}{\partial x}_{i,j} \approx \frac{z_{i,j+1} - z_{i,j-1}}{2\Delta x}, \quad \frac{\partial z}{\partial y}_{i,j} \approx \frac{z_{i+1,j} - z_{i-1,j}}{2\Delta y}
+\left(\frac{\partial z}{\partial x}\right)_{i,j} \approx \frac{z_{i,j+1} - z_{i,j-1}}{2\Delta x}, \quad \left(\frac{\partial z}{\partial y}\right)_{i,j} \approx \frac{z_{i+1,j} - z_{i-1,j}}{2\Delta y}
 \end{equation}
 \begin{equation}
-\text{Slope}_{\text{pct}}(i,j) = 100 \times \sqrt{\left(\frac{\partial z}{\partial x}_{i,j}\right)^2 + \left(\frac{\partial z}{\partial y}_{i,j}\right)^2}
+\text{Slope}_{\text{pct}}(i,j) = 100 \times \sqrt{\left(\left(\frac{\partial z}{\partial x}\right)_{i,j}\right)^2 + \left(\left(\frac{\partial z}{\partial y}\right)_{i,j}\right)^2}
 \end{equation}
 
 \subsection{Catchment Area Delineation}
@@ -334,7 +334,7 @@ All AI-generated code and formulations were rigorously reviewed, tested, and val
     \item \textbf{Alternative Web Front-End:} \url{http://10.1.75.51:5241/} (Internal Port: 5000)
     \item \textbf{Alternative Web Front-End:} \url{http://10.1.75.51:3241/} (Internal Port: 3000)
     \item \textbf{Interactive Swagger API Docs:} \url{http://10.1.75.51:6241/docs}
-    \item \textbf{Remote Server Repository Path:} \texttt{/home/student/pond_panning} (\texttt{student@10.1.75.51:2241})
+    \item \textbf{Remote Server Repository Path:} \texttt{/home/student/pond\_panning} (\texttt{student@10.1.75.51:2241})
 \end{itemize}
 
 \end{document}
