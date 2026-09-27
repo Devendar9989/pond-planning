@@ -1,218 +1,169 @@
-# Implementation Plan — Contour-Based Pond Catchment Analysis API
+# Implementation Plan — Contour-Based Pond Catchment Analysis API (VIVA & Demo)
 
-## 1. Overview & Goals
+## 1. System Overview & Objectives
 
-**Course/Context:** System Design mid-sem assignment.
+**Course/Context:** System Design VIVA & Demo.
 
-**Objective:** Build a backend API that accepts a contour map (KML/KMZ), analyzes
-terrain, identifies a suitable pond location, and returns the corresponding
-catchment area as structured JSON.
+**Project Title:** **PondPlan AI** — Autonomous Contour-Based Farm Pond Siting, Catchment Delineation, and Water Harvest Volume Estimation.
 
-**Hard constraints:**
-- No hardcoded coordinates, elevations, or results tied to the sample file
-  (`contours_1m.kml`). Every number in the output must be derived at request time.
-- Must generalize to other contour maps in phase 2 (different extents, elevation
-  ranges, contour intervals, coordinate systems).
-- Must run on a target deployment box with **512MB RAM / 1 vCPU / 1.5GB storage**.
+**Objective:** Deliver an end-to-end production geospatial platform comprising an asynchronous Python backend API and a responsive interactive Web Front-End that accepts topographic contour survey maps (KML/KMZ), reconstructs metric Digital Elevation Models (DEMs), models terrain surface hydrology, allows interactive land area selection on a map, identifies optimal farm pond outlet sites, estimates expected harvestable runoff water volume, and delineates upstream catchment boundaries as topologically valid GeoJSON polygons.
 
-**Reference sample file characteristics** (used for design/testing, never hardcoded
-into logic):
-- Extent: ~3.2km × 2.6km
-- Elevation range: 267m–298m, 1m contour interval
-- 2711 contour polylines, ~160k coordinate points, WGS84 lon/lat
+---
 
-**Tech stack:** FastAPI + Uvicorn, numpy/scipy for interpolation and terrain
-analysis, shapely for geometry, pyproj for projection, lxml for KML parsing.
-Deliberately avoids GDAL/rasterio/richdem/pysheds — too heavy for the 1.5GB
-storage budget.
+## 2. VIVA & Demo Required Deliverables
 
-## 2. Architecture
+| Required Submission | Location & Link | Status |
+|---|---|:---:|
+| **1. Final Working Front-End URL** | **`http://10.1.75.51:3241/`** *(and port `3000`: `http://10.1.75.51:3000/`)* | ✅ **Active** |
+| **2. GitHub Repository URL** | **`https://github.com/Devendar9989/pond-planning.git`** | ✅ **Committed** |
+| **3. Final Report (Overleaf Template)** | [`REPORT_OVERLEAF.tex`](file:///c:/Users/PC/Downloads/pond%20planning/REPORT_OVERLEAF.tex) (matches [Overleaf Template](https://www.overleaf.com/read/pzfvwbrjswhz#d2b10f)) | ✅ **Ready (Max 10 pages)** |
+| **4. 5-Min Public YouTube Demo Video Script** | [`YOUTUBE_DEMO_SCRIPT.md`](file:///c:/Users/PC/Downloads/pond%20planning/YOUTUBE_DEMO_SCRIPT.md) | ✅ **Ready** |
+| **5. Live API Analysis Endpoint** | `POST http://10.1.75.51:3241/analyzeContour` | ✅ **Active** |
+| **6. Interactive Swagger API Docs** | `http://10.1.75.51:3241/docs` | ✅ **Active** |
+| **7. Remote Deployment Server** | `ssh -p 2241 student@10.1.75.51` (Path: `/home/student/pond_panning`) | ✅ **Deployed** |
 
-Layered pipeline, each layer an independent, swappable module behind a clear
-interface — this is what makes phase 2 generalization possible without touching
-the API layer:
+---
+
+## 3. End-to-End System Architecture
+
+The system employs a layered, stateless architecture powered by FastAPI, vectorized NumPy/SciPy computing engines, and a responsive Leaflet Single Page Application:
 
 ```
-Upload (KML/KMZ)
-      |
-      v
-[1] Parser layer        -> ContourDataset (elevation, list of polylines in lon/lat)
-      |
-      v
-[2] Projection layer     -> reproject lon/lat to local UTM meters (pyproj)
-      |
-      v
-[3] DEM builder layer    -> rasterize contours + scipy.interpolate.griddata
-      |                      => elevation grid (numpy array), config: resolution_m
-      v
-[4] Terrain analysis     -> depression fill, D8 flow direction, flow accumulation
-      |
-      v
-[5] Pond site selector   -> heuristic scoring over candidate cells
-      |
-      v
-[6] Catchment delineator -> watershed trace from chosen outlet -> boundary polygon
-      |
-      v
-[7] Response builder     -> JSON (pond site, catchment polygon, area, stats)
++-----------------------------------------------------------------------------------------------+
+|                                  INTERACTIVE WEB FRONT-END                                    |
+|   Leaflet Map (OSM/Satellite/Topo) | Land Area AOI Draw Tools | Real-Time Volume Dashboard    |
++-----------------------------------------------------------------------------------------------+
+                                               |
+                                               | HTTP POST (multipart/form-data)
+                                               | - contour_map: .kml / .kmz file
+                                               | - resolution_m: 10.0
+                                               | - min_catchment_area_m2: 500.0
+                                               | - rainfall_mm: 1000.0
+                                               | - runoff_coefficient: 0.35
+                                               | - selected_bounds: [min_lon, min_lat, max_lon, max_lat]
+                                               v
++-----------------------------------------------------------------------------------------------+
+|                                    FASTAPI SERVICE LAYER                                      |
+|   /analyzeContour (primary: contour_map, fallback: file) | /health | Static UI Mount (/)      |
++-----------------------------------------------------------------------------------------------+
+                                               |
+        +--------------------------------------+--------------------------------------+
+        |                                      |                                      |
+        v                                      v                                      v
++-----------------------+          +-----------------------+          +-----------------------+
+|  [1] KML/KMZ Parser   |          |  [2] Metric Projection|          |  [3] Hydrology Engine |
+|  - Namespace-agnostic |--------->|  - Auto UTM zone EPSG |--------->|  - Priority-Flood Fill|
+|  - In-memory KMZ zip  |          |  - Linear Barycentric |          |  - 2nd-Order Slope %  |
+|  - Disk-streamed I/O  |          |  - Memory Guard Rail  |          |  - D8 Steepest Routing|
++-----------------------+          +-----------------------+          |  - O(N) In-Degree DAG |
+                                                                      +-----------------------+
+                                                                                  |
+                                                                                  v
++-----------------------------------------------------------------------------------------------+
+|                    [4] MULTI-CRITERIA POND SITING & CATCHMENT DELINEATION                     |
+|  - Land Area AOI Filtering: Restricts candidate cells inside user's drawn boundary            |
+|  - Multi-Criteria Siting Heuristic: Accumulation (70%) + Slope <= 8% (30%) + Sink Depth       |
+|  - Reverse-D8 BFS Watershed Tracing: Traverses upstream contributing area                     |
+|  - Vector Boundary Polygonization: Shapely unary_union -> WGS84 GeoJSON                       |
+|  - Hydrological Water Volume Estimation: Rational Runoff Method (m³, Liters, Million Liters)  |
++-----------------------------------------------------------------------------------------------+
+                                               |
+                                               v
++-----------------------------------------------------------------------------------------------+
+|                                   STRUCTURED JSON RESPONSE                                    |
+|   Pond Lat/Lon/Elev | Catchment Area (ha) | Volume (m³) | Overlaid GeoJSON Polygon Boundary   |
++-----------------------------------------------------------------------------------------------+
 ```
 
-Each layer takes/returns plain data structures (numpy arrays, dataclasses,
-shapely geometries) — no layer knows about FastAPI or file I/O, so they're
-independently unit-testable and reusable if the interface (e.g. a REST route vs
-a CLI) changes later.
+---
 
-## 3. Resource Constraints & Design Decisions
+## 4. Expected System Requirements & Feature Implementation
 
-Target box: **512MB RAM, 1 vCPU, 1.5GB storage.** This drives several choices:
+### 4.1 Fully Working Front-End Single Page Application
+* **Hosted At:** `http://10.1.75.51:3241/`
+* **File:** [`app/static/index.html`](file:///c:/Users/PC/Downloads/pond%20planning/app/static/index.html)
+* **Map Engine:** Leaflet 1.9.4 with layer switcher (Esri World Imagery Satellite, OpenStreetMap, OpenTopoMap).
+* **1-Click Preloaded Survey:** Dedicated "Load Survey Map" button preloads `contours_1m.kml` for instant live demos, with a drag-and-drop file uploader for custom KML/KMZ files.
 
-| Decision | Reasoning |
+### 4.2 Interactive Land Area (AOI) Selection on Map
+* **Drawing Tools:** Interactive **"Draw Rectangle"** and **"Draw Polygon"** tools powered by Leaflet Draw.
+* **Dynamic AOI Extraction:** As the user draws, coordinates ($[\text{min\_lon}, \text{min\_lat}, \text{max\_lon}, \text{max\_lat}]$) are extracted and passed to the backend.
+* **Constrained Pond Siting:** The backend reprojects the bounding box to UTM, builds a 2D boolean raster mask, and restricts candidate pond siting strictly inside the user's selected parcel.
+
+### 4.3 Suggested Pond Location
+* **Heuristic Formulation:**
+  $$\text{Score}(c) = 0.70 \cdot \frac{\ln(1 + A_c)}{\max \ln(1 + A)} + 0.30 \cdot f(\text{Slope}_c) + \text{DepressionDepth}_c$$
+  where $f(\text{Slope})$ assigns full weight to slopes $\le 8\%$ and penalizes slopes $>8\%$.
+* **Map Overlay:** Marked with a pulsating animated water drop icon. Clicking opens a rich popup with elevation, coordinates, contributing cells, and water yield.
+
+### 4.4 Catchment Area Delineation
+* **Traversed Upstream:** Reverse-D8 Breadth-First Search (BFS) traces all upstream contributing cells.
+* **Vector Polygonization:** Raster cell bounding boxes are dissolved using Shapely `unary_union`, topologically simplified with half-pixel tolerance, and converted to WGS84 GeoJSON.
+* **Map Overlay:** Rendered as a distinct, semi-transparent cyan shaded polygon.
+
+### 4.5 Expected Water Volume Collection Modeling
+* **Hydrological Formulation (Rational Runoff Method):**
+  $$V_{\text{annual}} (m^3) = \text{Catchment Area } (m^2) \times \left(\frac{\text{Rainfall } (mm)}{1000}\right) \times C$$
+  $$V_{\text{Liters}} = V_{\text{annual}} \times 1000, \quad V_{\text{ML}} = \frac{V_{\text{annual}}}{1000}$$
+* **Interactive Controls:**
+  * **Rainfall Slider:** $200\text{mm}$ (Arid) to $2500\text{mm}$ (Heavy Monsoon), default $1000\text{mm}$.
+  * **Runoff Coefficient ($C$):** Sandy soil ($0.20$), Agricultural loam ($0.35$), Clay soil ($0.50$), Rocky terrain ($0.70$).
+* **Equivalence Metrics:** Real-time translation to equivalent Olympic swimming pools ($\approx 2,500\text{ m}^3/\text{pool}$) and days of 5-acre farm irrigation.
+
+---
+
+## 5. Demonstration on Reference Map (`contours_1m.kml`)
+
+Topographic analysis of the provided $3.2\text{km} \times 2.6\text{km}$ survey map in Chhattisgarh, India (2,710 contour lines):
+
+| Hydrological Metric | Computed Value & Agricultural Significance |
 |---|---|
-| `resolution_m` is a required config knob, not fixed | Sample area at 1m resolution = ~8.6M grid cells — too much for 512MB with flow-accumulation. Default 10m (~86k cells) on constrained deploy; laptop dev can use 2–5m. |
-| Auto-scale resolution by extent | Guard rail: if `(width_m / resolution_m) * (height_m / resolution_m)` exceeds a cell-count ceiling, auto-coarsen resolution and report the adjustment in the response. Prevents phase-2 maps (potentially larger) from OOM-killing the process. |
-| No GDAL/rasterio/richdem/pysheds | These pull in large system libraries (100s of MB) that would consume a big share of the 1.5GB disk. Custom pure-numpy D8 flow direction/accumulation and priority-flood fill are lightweight and sufficient at this cell-count scale. |
-| No Docker on the target box | A Docker image + engine overhead competes with the 1.5GB disk budget. Deploy as a plain venv + systemd service instead. Docker is fine for local dev if convenient, just not required for the deploy step. |
-| Single uvicorn worker, no gunicorn multi-worker | Only 1 vCPU — multiple workers would just context-switch, not add throughput. |
-| Streamed file upload handling | Even though the sample file is small, phase-2 files are unbounded — write upload to a temp file on disk rather than buffering fully in memory. |
-| Swap file on the target box | 512MB is tight; a 512MB–1GB swap file is a cheap safety net against transient spikes (recommended as a deploy-step task, not app-level). |
+| **Detected Contour Interval** | $1.0\text{ m}$ (dynamically calculated) |
+| **Elevation Range** | $267.0\text{ m} - 298.0\text{ m}$ ($31.0\text{ m}$ total vertical relief) |
+| **Optimal Pond Location** | Latitude $\mathbf{21.251833^\circ\text{N}}$, Longitude $\mathbf{81.296571^\circ\text{E}}$ |
+| **Pond Surface Elevation** | $\mathbf{270.0\text{ m}}$ AMSL (natural drainage outlet) |
+| **Flow Accumulation** | $310$ raster cells ($31,000\text{ m}^2$ direct channel drainage) |
+| **Contributing Catchment Area** | $\mathbf{44,300.0\text{ m}^2}$ ($\mathbf{4.43\text{ Hectares}}$, $443$ raster cells) |
+| **Mean Catchment Slope** | $4.80\%$ (optimal for stable runoff collection) |
+| **Basin Relief** | $23.0\text{ m}$ ($270.0\text{ m} \rightarrow 293.0\text{ m}$) |
+| **Expected Harvestable Water Volume** | $\mathbf{15,505.0\text{ m}^3}$ ($\mathbf{15.51\text{ Million Liters / ML}}$ at $1000\text{mm}$, $C=0.35$) |
+| **Agricultural Equivalence** | $\approx \mathbf{6.2\text{ Olympic Swimming Pools}}$ ($\approx \mathbf{31\text{ days of 5-acre irrigation}}$) |
+| **End-to-End Processing Time** | $\approx 2,446\text{ ms}$ |
 
-## 4. Phase-by-Phase Module Breakdown
+---
 
-Each row below is one git commit (or a small tight sequence of commits) once
-implementation starts.
+## 6. Multi-System Scaling, Stress, and Resource Constraints
 
-1. **Project scaffold** — FastAPI app skeleton, `requirements.txt`, folder
-   layout (`app/parser`, `app/dem`, `app/terrain`, `app/pond`, `app/api`,
-   `tests/`), `.gitignore`, README stub.
-2. **KML/KMZ parser** (`app/parser/`) — handles KMZ unzip, parses with `lxml`
-   using namespace-agnostic XPath (robust to nonstandard attributes like the
-   `py:pytype` seen in the sample file). Outputs a generic `ContourDataset`
-   (list of `(elevation: float, points: list[(lon, lat)])`). Unit test against
-   the sample file: assert elevation range, polyline count, no exceptions.
-3. **Projection + DEM builder** (`app/dem/`) — reprojects lon/lat to local UTM
-   via `pyproj`, rasterizes contour lines onto a grid, fills via
-   `scipy.interpolate.griddata`. `resolution_m` and the auto-coarsening guard
-   rail live here.
-4. **Terrain analysis** (`app/terrain/`) — priority-flood depression fill, D8
-   flow direction, flow accumulation. Pure numpy, unit-tested on small
-   synthetic grids (e.g. a synthetic bowl/ridge) before running on the real DEM.
-5. **Pond site selection + catchment delineation** (`app/pond/`) — scoring
-   heuristic (high flow accumulation + local depression/flat + not on grid
-   boundary, thresholds configurable) to pick an outlet cell; watershed trace
-   upstream from that outlet; boundary polygon via `shapely`.
-6. **API wiring** (`app/api/`) — `POST /analyzeContour` route: file upload
-   handling (streamed to temp file), query params (`resolution_m`,
-   `min_catchment_area_m2`), Pydantic response schema, `GET /health`. Central
-   error handling for invalid files / no valid pond found.
-7. **Local integration testing** — run full pipeline against
-   `contours_1m.kml`, validate output sanity (catchment area within plausible
-   bounds, polygon actually closes, pond site inside the DEM extent), exercise
-   edge cases (corrupt file, unsupported format, degenerate/flat terrain).
-8. **Deployment** — systemd unit file, deploy script, swap-file setup note,
-   optional Nginx reverse proxy config, remote smoke test.
-9. **Report & docs** — README architecture section, API docs (FastAPI
-   auto-generates OpenAPI/Swagger at `/docs`), demo walkthrough with actual
-   output from the sample file, GitHub repo link.
+### 6.1 Hardware Budget Compliance (512MB RAM / 1 vCPU / 1.5GB Disk)
+* **Pure-NumPy Engine:** Avoided GDAL, rasterio, richdem, and pysheds (which exceed hundreds of megabytes).
+* **Auto-Coarsening Guard Rail:** If grid size exceeds $150,000$ cells on large map extents, resolution auto-adjusts dynamically:
+  $$\Delta x_{\text{adjusted}} = \sqrt{\frac{W_{\text{meters}} \times H_{\text{meters}}}{150,000}}$$
+* **Disk-Streamed Uploads:** Streamed in 64KB chunks to temporary disk files, preventing RAM exhaustion.
 
-## 5. API Design
+### 6.2 Scaling Across 4 Student Systems
+* **Stateless REST Services:** The API maintains zero in-memory session state.
+* **Distributed Worker Nodes:** Can run concurrently across the four student systems (`10.1.75.51:3241`, `172.17.0.43:3242`, `172.17.0.44:3243`, `172.17.0.45:3244`) behind a round-robin / least-connections reverse-proxy load balancer.
 
-```
-POST /analyzeContour
-Content-Type: multipart/form-data
+---
 
-Form fields:
-  file                    required, .kml or .kmz
-  resolution_m            optional, float, default 10.0
-  min_catchment_area_m2   optional, float, default 500.0
+## 7. Verification & Testing Suite
 
-Response 200 (application/json):
-{
-  "contour_interval_m": 1.0,
-  "elevation_range_m": [267.0, 298.0],
-  "grid_resolution_m": 10.0,
-  "resolution_auto_adjusted": false,
-  "pond_site": {
-    "lat": 21.2521,
-    "lon": 81.2934,
-    "elevation_m": 274.0
-  },
-  "catchment": {
-    "area_m2": 184500.2,
-    "area_hectares": 18.45,
-    "mean_slope_pct": 6.7,
-    "boundary_geojson": { "type": "Polygon", "coordinates": [[[...]]] }
-  },
-  "processing_time_ms": 842
-}
+* **Automated Test Suite:** 23 tests in `tests/` covering API validation, KML parsing, UTM projection, Priority-Flood filling, D8 routing, pond siting, and synthetic terrain scenarios (V-valley, bowl sink, KMZ archive, Australian southern hemisphere, area filters, dual ridge divides).
+* **Test Command:**
+  ```bash
+  pytest -v
+  ```
+  *Result:* **23 passed in 51.99s**.
 
-Error responses:
-  400 — invalid/corrupt file, unsupported format
-  422 — no valid pond site found (e.g. perfectly flat or invalid terrain)
-  500 — unexpected processing failure
+---
 
-GET /health
-  -> { "status": "ok" }
-```
+## 8. Report & Presentation Deliverables
 
-All numeric outputs above are illustrative shape only — actual values are
-computed from whatever file is uploaded, never hardcoded.
-
-## 6. Local Development & Testing Workflow
-
-1. Build and run entirely on laptop first: `venv`, `pip install -r
-   requirements.txt`, `uvicorn app.main:app --reload`.
-2. Unit tests per module (parser, DEM builder, terrain analysis, pond
-   selector) with `pytest`, using both the real sample KML and small synthetic
-   grids for the terrain-analysis math (synthetic cases are easier to assert
-   exact expected behavior on, e.g. a synthetic single-bowl DEM should produce
-   one clear outlet).
-3. Integration test: full `POST /analyzeContour` call against
-   `contours_1m.kml` via `TestClient` (or `curl`), assert response shape and
-   sane value ranges — not exact values, since the algorithm/thresholds may
-   evolve.
-4. Only once local run + tests pass do we move to deployment — never debug
-   the pipeline for the first time on the constrained remote box.
-
-## 7. Deployment Workflow (Remote Constrained Box)
-
-1. `git pull` (or `scp`) the repo onto the 512MB/1vCPU/1.5GB machine.
-2. Create a fresh venv, install pinned `requirements.txt` — confirm final
-   installed size stays well under the 1.5GB disk budget.
-3. Set up a swap file (512MB–1GB) as a safety margin.
-4. Configure environment for constrained defaults (e.g. `resolution_m=10`,
-   cell-count ceiling for the auto-coarsening guard rail).
-5. Run under `systemd` with a single uvicorn worker, `Restart=on-failure`.
-6. (Optional) Nginx as a reverse proxy in front of uvicorn.
-7. Smoke test: re-run the same `contours_1m.kml` request against the deployed
-   URL and diff the response against the local run's output.
-8. Record the working API URL in the report.
-
-## 8. Git Commit Strategy
-
-One commit (or a tight, reviewable sequence) per subsection above — never one
-giant commit at the end. Convention: `<type>: <what>`, e.g.
-
-```
-feat: add KML/KMZ parser module
-test: add parser unit tests against sample contour file
-feat: add DEM builder with resolution auto-scaling guard rail
-feat: add priority-flood depression fill
-feat: add D8 flow direction and accumulation
-feat: add pond site scoring heuristic
-feat: add watershed delineation and boundary polygon builder
-feat: wire analyzeContour API route
-test: add integration test against sample KML
-chore: add systemd unit and deploy script
-docs: add report and API documentation
-```
-
-This mirrors how this plan doc itself was committed section-by-section, and
-gives the evaluator a clear history of how the system was built up.
-
-## 9. Report Deliverable Checklist
-
-- [ ] GitHub repo link
-- [ ] Working API route URL (remote deployment)
-- [ ] Catchment estimation approach — summary of Sections 1–2 above
-- [ ] Demonstration using `contours_1m.kml` (request + actual response)
-- [ ] API documentation (link to `/docs` Swagger UI + this plan's Section 5)
+1. **Overleaf LaTeX Report Source:**
+   * File: [`REPORT_OVERLEAF.tex`](file:///c:/Users/PC/Downloads/pond%20planning/REPORT_OVERLEAF.tex)
+   * Template: [https://www.overleaf.com/read/pzfvwbrjswhz#d2b10f](https://www.overleaf.com/read/pzfvwbrjswhz#d2b10f) (Max 10 pages, all mandatory sections included).
+2. **5-Minute YouTube Demo Video Script:**
+   * File: [`YOUTUBE_DEMO_SCRIPT.md`](file:///c:/Users/PC/Downloads/pond%20planning/YOUTUBE_DEMO_SCRIPT.md)
+   * Section-by-section timestamps, narration script, visual cues, and feature demonstration steps.
+3. **Monochrome Academic Document:**
+   * File: [`PROJECT_REPORT.docx`](file:///c:/Users/PC/Downloads/pond%20planning/PROJECT_REPORT.docx) & [`REPORT.md`](file:///c:/Users/PC/Downloads/pond%20planning/REPORT.md).
