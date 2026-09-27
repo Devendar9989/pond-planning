@@ -5,9 +5,11 @@
 
 ### Overview & Video Objectives
 * **Target Video Length:** ~4 to 5 minutes (Maximum allowed: 5:00)
-* **Working Front-End URL to Showcase:** `http://10.1.75.51:3241/`
-* **API Documentation to Showcase:** `http://10.1.75.51:3241/docs`
-* **GitHub Repository:** `https://github.com/Devendar9989/pond-planning.git`
+* **YouTube Video Demo Link:** `https://www.youtube.com/playlist?list=PLMFQLz-BMw9M`
+* **Working Front-End URL to Showcase (Primary):** `http://10.1.75.51:6241/`
+* **Alternative Front-End URLs:** `http://10.1.75.51:5241/` and `http://10.1.75.51:3241/`
+* **API Documentation to Showcase:** `http://10.1.75.51:6241/docs`
+* **GitHub Repository:** `https://github.com/Devendar9989/pond-planning`
 
 ---
 
@@ -81,10 +83,10 @@
 ---
 
 #### 🕒 [4:15 – 5:00] Section 5: Scaling, Multi-System Architecture & Conclusion
-* **Visual:** Briefly show `/docs` (FastAPI Swagger UI), the terminal running `pytest` (23 passed), and the GitHub repository.
+* **Visual:** Briefly show `/docs` (FastAPI Swagger UI), the terminal running `pytest` (25 passed), and the GitHub repository.
 * **Speaker Script:**
-> *"For multi-system scalability, our backend API is completely stateless, accepts standard multipart form data under `contour_map`, and is deployed with an auto-restarting watchdog daemon across our remote servers.*
-> *Our automated test suite covers 23 unit, integration, and synthetic topographic scenarios.*
+> *"For multi-system scalability, our backend API is completely stateless, accepts standard multipart form data under `contour_map`, and is deployed with an auto-restarting watchdog daemon across our remote servers on ports 6000 (6241), 5000 (5241), and 3000 (3241).*
+> *Our automated test suite covers 25 unit, integration, and synthetic topographic scenarios.*
 > *Users can download the full GeoJSON boundary polygon or export the structured JSON report with a single click.*
 > *Thank you for watching our demo of PondPlan AI. All links, including the live working front-end, GitHub repository, and technical report, are provided in the description below."*
 
@@ -94,9 +96,12 @@
 1. **Screen Recording:** Use OBS Studio, QuickTime, or Windows Game Bar (`Win + G`) at 1080p resolution.
 2. **Audio:** Use a clean microphone with clear pacing matching the timestamps above.
 3. **YouTube Title:** `PondPlan AI — Autonomous Farm Pond Siting & Catchment Analysis Demo`
-4. **YouTube Description:**
+4. **YouTube Playlist Link:** `https://www.youtube.com/playlist?list=PLMFQLz-BMw9M`
+5. **YouTube Description:**
    ```
-   Live Front-End & API: http://10.1.75.51:3241/
-   Swagger Docs: http://10.1.75.51:3241/docs
-   GitHub Repository: https://github.com/Devendar9989/pond-planning.git
+   Live Front-End (Primary): http://10.1.75.51:6241/
+   Alternative Front-End: http://10.1.75.51:5241/ | http://10.1.75.51:3241/
+   Swagger Docs: http://10.1.75.51:6241/docs
+   GitHub Repository: https://github.com/Devendar9989/pond-planning
+   YouTube Demo Link: https://www.youtube.com/playlist?list=PLMFQLz-BMw9M
    ```

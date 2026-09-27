@@ -13,13 +13,16 @@ The system has been engineered to strictly satisfy target deployment resource bu
 
 | Deliverable / Metric | Details & Verified Endpoint URL |
 |---|---|
-| **Working API Route (POST)** | `http://10.1.75.51:3241/analyzeContour` |
-| **Health Check Endpoint (GET)** | `http://10.1.75.51:3241/health` |
-| **Interactive OpenAPI Documentation** | `http://10.1.75.51:3241/docs` |
-| **GitHub Repository Link** | `https://github.com/Devendar9989/pond-planning.git` |
+| **Primary Working Front-End URL** | `http://10.1.75.51:6241/` (Internal Port: 6000) |
+| **Alternative Front-End URLs** | `http://10.1.75.51:5241/` (Port 5000) & `http://10.1.75.51:3241/` (Port 3000) |
+| **Working API Route (POST)** | `http://10.1.75.51:6241/analyzeContour` |
+| **Health Check Endpoint (GET)** | `http://10.1.75.51:6241/health` |
+| **Interactive OpenAPI Documentation** | `http://10.1.75.51:6241/docs` |
+| **GitHub Repository Link** | `https://github.com/Devendar9989/pond-planning` |
+| **YouTube Video Demo Link** | `https://www.youtube.com/playlist?list=PLMFQLz-BMw9M` |
 | **Remote Server Repository Path** | `/home/student/pond_panning` *(on `10.1.75.51:2241`)* |
-| **Deployment Mode** | Continuous auto-restarting watchdog daemon (`run_daemon.sh`) |
-| **Automated Test Suite** | 21 unit, integration, and topographic scenario tests (pytest) |
+| **Deployment Mode** | Continuous auto-restarting watchdog daemon (`keep_running_forever.sh`) |
+| **Automated Test Suite** | 25 unit, integration, and topographic scenario tests (pytest) |
 
 ---
 
