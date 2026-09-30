@@ -20,14 +20,14 @@
 | Timeline | Section                | Visual on Screen                   | Spoken Narration     |
 +-----------------------------------------------------------------------------------------------+
 | 0:00-0:45| 1. Introduction & Goal | Front-End Landing Page at          | Problem & Project    |
-|          |                        | http://10.1.75.51:3241/            | Objectives           |
+|          |                        | http://10.1.75.51:6241/            | Objectives           |
 | 0:45-1:45| 2. Core Hydrological   | Architecture diagram & code view   | Pure-NumPy Algorithm |
 |          |    Algorithms          | (Priority-Flood, D8, O(N) DAG)     | Flow & Formulation   |
 | 1:45-3:15| 3. Live Demo (Map,     | Browser interacting with map,      | Live Land Selection, |
 |          |    Land AOI & Siting)  | drawing land parcel, clicking Run  | Overlay & Results    |
 | 3:15-4:15| 4. Water Harvesting    | Adjusting Rainfall & Soil sliders, | Rational Runoff &    |
 |          |    Volume Calculator   | viewing Olympic pool metrics       | Agricultural Impact  |
-| 4:15-5:00| 5. Multi-System Scaling| Swagger API, Pytest suite (23/23), | Scaling Architecture |
+| 4:15-5:00| 5. Multi-System Scaling| Swagger API, Pytest suite (25/25), | Scaling Architecture |
 |          |    & Conclusion        | GitHub repo & Overleaf report      | & Closing Remarks    |
 +-----------------------------------------------------------------------------------------------+
 ```
@@ -37,7 +37,7 @@
 ### Detailed Script & Narration
 
 #### 🕒 [0:00 – 0:45] Section 1: Introduction & Problem Statement
-* **Visual:** Open browser at `http://10.1.75.51:3241/`. Show the clean Leaflet map with satellite imagery and the control sidebar.
+* **Visual:** Open browser at `http://10.1.75.51:6241/`. Show the clean Leaflet map with satellite imagery and the control sidebar.
 * **Speaker Script:**
 > *"Hello everyone. Today I am demonstrating **PondPlan AI**, an autonomous geospatial system for contour-based farm pond siting, catchment boundary delineation, and water harvest volume estimation.*
 > *In dryland agriculture, strategically placing farm ponds is crucial for drought resilience. However, manual topographical surveying across hectares of land is expensive and time-consuming. Our platform takes raw contour survey files in KML or KMZ formats, performs automated hydrological modeling, and identifies the optimal pond outlet site and harvestable water volume within seconds—all running on a lightweight, resource-constrained server."*
@@ -57,7 +57,7 @@
 ---
 
 #### 🕒 [1:45 – 3:15] Section 3: Live System Demonstration & Map Interaction
-* **Visual:** Return to `http://10.1.75.51:3241/`.
+* **Visual:** Return to `http://10.1.75.51:6241/`.
   1. Click **"Load Survey Map"** (or select `contours_1m.kml`).
   2. Click **"Draw Rectangle"** or **"Draw Polygon"** on the map to highlight a specific land parcel / farm area.
   3. Click **"Run Catchment Analysis"**.
