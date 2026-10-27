@@ -5,30 +5,44 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PondPlan AI — Contour-Based Farm Pond Siting & Catchment Delineation</title>
   
-  <!-- Leaflet CSS & JS -->
+  <!-- Tailwind CSS: Local vendor asset first, then CDN fallback -->
+  <link rel="stylesheet" href="/static/vendor/tailwind.min.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Leaflet CSS & JS: Local vendor asset first, then CDN fallback -->
+  <link rel="stylesheet" href="/static/vendor/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="/static/vendor/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- Leaflet Draw -->
+  <!-- Leaflet Draw: Local vendor asset first, then CDN fallback -->
+  <link rel="stylesheet" href="/static/vendor/leaflet.draw.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <script src="/static/vendor/leaflet.draw.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 
-  <!-- Google Fonts & Tailwind CSS -->
+  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Lucide Icons -->
+  <!-- Lucide Icons: Local vendor asset first, then CDN fallback -->
+  <script src="/static/vendor/lucide.js"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
 
   <!-- Chart.js for statistics -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
-    body { font-family: 'Plus Jakarta Sans', sans-serif; }
-    .font-mono { font-family: 'JetBrains Mono', monospace; }
-    #map { height: calc(100vh - 65px); min-height: 550px; z-index: 10; }
+    /* Robust Offline Base CSS Fallbacks */
+    * { box-sizing: border-box; }
+    body { font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 0; }
+    .font-mono { font-family: 'JetBrains Mono', monospace, ui-monospace; }
+    header { height: 65px; display: flex; align-items: center; justify-content: space-between; background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 0 24px; position: relative; z-index: 30; }
+    main { display: flex; height: calc(100vh - 65px); position: relative; overflow: hidden; }
+    aside#sidebar { width: 420px; min-width: 380px; max-width: 440px; background: #ffffff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; height: 100%; z-index: 20; box-shadow: 4px 0 16px rgba(0,0,0,0.04); flex-shrink: 0; }
+    #map { flex: 1; height: 100%; min-height: 550px; z-index: 10; background: #e2e8f0; }
+    .hidden { display: none !important; }
     .glass-card {
       background: rgba(255, 255, 255, 0.94);
       backdrop-filter: blur(12px);
@@ -76,11 +90,11 @@
         <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
         <span>Load Survey</span>
       </button>
-      <a href="http://10.1.75.51:5241/" target="_blank" class="text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-2 rounded-lg transition-all flex items-center gap-1.5 shadow-sm" title="View distributed traces in Jaeger UI">
+      <a href="http://10.1.75.51:5241/search?service=pondplan-ai&limit=20" target="_blank" class="text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-2 rounded-lg transition-all flex items-center gap-1.5 shadow-sm" title="View distributed traces in Jaeger UI">
         <i data-lucide="activity" class="w-3.5 h-3.5 text-indigo-600"></i>
         <span>Jaeger UI</span>
       </a>
-      <a href="http://10.1.75.51:4241/" target="_blank" class="text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-3 py-2 rounded-lg transition-all flex items-center gap-1.5 shadow-sm" title="View Prometheus graphs and metrics">
+      <a href="http://10.1.75.51:4241/graph?g0.expr=pondplan_requests_total&g0.tab=0" target="_blank" class="text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-3 py-2 rounded-lg transition-all flex items-center gap-1.5 shadow-sm" title="View Prometheus graphs and metrics">
         <i data-lucide="line-chart" class="w-3.5 h-3.5 text-amber-600"></i>
         <span>Prometheus</span>
       </a>
@@ -368,17 +382,17 @@
 
         <!-- QUICK BACKEND LINKS -->
         <div class="grid grid-cols-2 gap-2">
-          <a href="http://10.1.75.51:5241/" target="_blank" class="p-2.5 rounded-lg border border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100/80 transition-all text-left">
+          <a href="http://10.1.75.51:5241/search?service=pondplan-ai&limit=20" target="_blank" class="p-2.5 rounded-lg border border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100/80 transition-all text-left">
             <div class="flex items-center gap-1.5 text-indigo-700 font-bold text-xs">
               <i data-lucide="git-commit" class="w-3.5 h-3.5"></i> Jaeger Tracing
             </div>
-            <p class="text-[10px] text-indigo-600 mt-0.5">Spans & latency timelines</p>
+            <p class="text-[10px] text-indigo-600 mt-0.5">Spans & latency timelines ↗</p>
           </a>
-          <a href="http://10.1.75.51:4241/" target="_blank" class="p-2.5 rounded-lg border border-amber-200 bg-amber-50/60 hover:bg-amber-100/80 transition-all text-left">
+          <a href="http://10.1.75.51:4241/graph?g0.expr=pondplan_requests_total&g0.tab=0" target="_blank" class="p-2.5 rounded-lg border border-amber-200 bg-amber-50/60 hover:bg-amber-100/80 transition-all text-left">
             <div class="flex items-center gap-1.5 text-amber-700 font-bold text-xs">
               <i data-lucide="line-chart" class="w-3.5 h-3.5"></i> Prometheus
             </div>
-            <p class="text-[10px] text-amber-600 mt-0.5">Metric time-series & PromQL</p>
+            <p class="text-[10px] text-amber-600 mt-0.5">Time-series graphs & PromQL ↗</p>
           </a>
         </div>
 
@@ -399,7 +413,10 @@
 
         <!-- PROMETHEUS METRICS SUMMARY -->
         <div class="space-y-2 pt-2 border-t border-slate-200">
-          <span class="text-xs font-bold text-slate-700 uppercase tracking-wider block">Prometheus Metrics</span>
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-700 uppercase tracking-wider block">Prometheus Metrics</span>
+            <a href="http://10.1.75.51:4241/graph?g0.expr=pondplan_requests_total&g0.tab=0" target="_blank" class="text-[10px] text-amber-600 hover:underline">Open in PromQL ↗</a>
+          </div>
           <div class="grid grid-cols-2 gap-2 text-xs">
             <div class="p-2.5 rounded-lg border border-slate-200 bg-slate-50 space-y-0.5">
               <span class="text-[10px] text-slate-500 font-semibold block">Total Requests</span>
@@ -417,6 +434,14 @@
               <span class="text-[10px] text-slate-500 font-semibold block">Buffered Spans</span>
               <span id="statBufferedSpans" class="text-lg font-bold font-mono text-purple-600">0</span>
             </div>
+          </div>
+          
+          <!-- Quick Metric Query Links -->
+          <div class="flex flex-wrap gap-1 pt-1 text-[10px]">
+            <a href="http://10.1.75.51:4241/graph?g0.expr=pondplan_requests_total&g0.tab=0" target="_blank" class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors font-mono">requests_total ↗</a>
+            <a href="http://10.1.75.51:4241/graph?g0.expr=pondplan_catchment_area_m2&g0.tab=0" target="_blank" class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors font-mono">catchment_area ↗</a>
+            <a href="http://10.1.75.51:4241/graph?g0.expr=pondplan_expected_water_volume_m3&g0.tab=0" target="_blank" class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors font-mono">water_volume ↗</a>
+            <a href="http://10.1.75.51:4241/graph?g0.expr=pondplan_analysis_duration_seconds&g0.tab=0" target="_blank" class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors font-mono">duration_s ↗</a>
           </div>
         </div>
 
@@ -473,102 +498,114 @@
   </main>
 
   <script>
-    // Initialize Lucide Icons
-    lucide.createIcons();
+    // Initialize Lucide Icons safely
+    if (typeof lucide !== 'undefined' && lucide.createIcons) {
+      try { lucide.createIcons(); } catch(e) { console.warn("Lucide init:", e); }
+    }
 
     // --------------------------------------------------------------------------
     // 1. LEAFLET MAP SETUP
     // --------------------------------------------------------------------------
-    const map = L.map('map', {
-      center: [21.2518, 81.2965],
-      zoom: 14,
-      zoomControl: false
-    });
-
-    L.control.zoom({ position: 'topright' }).addTo(map);
-
-    // Base Layers
-    const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-      maxZoom: 19
-    });
-
-    const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 19
-    });
-
-    const topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-      attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap (CC-BY-SA)',
-      maxZoom: 17
-    });
-
-    satelliteLayer.addTo(map);
-
-    L.control.layers({
-      "Satellite (Esri)": satelliteLayer,
-      "OpenStreetMap": streetLayer,
-      "Topographic Map": topoLayer
-    }, null, { position: 'topright' }).addTo(map);
-
-    // Feature Layers
-    const drawnItems = new L.FeatureGroup();
-    map.addLayer(drawnItems);
-
+    let map = null;
+    let drawnItems = null;
+    let drawControl = null;
     let catchmentLayer = null;
     let pondMarker = null;
     let currentAnalysisData = null;
     let selectedAoiBounds = null; // [min_lon, min_lat, max_lon, max_lat]
 
+    try {
+      if (typeof L !== 'undefined') {
+        map = L.map('map', {
+          center: [21.2518, 81.2965],
+          zoom: 14,
+          zoomControl: false
+        });
+
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
+        // Base Layers
+        const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          attribution: 'Tiles &copy; Esri',
+          maxZoom: 19
+        });
+
+        const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap',
+          maxZoom: 19
+        });
+
+        satelliteLayer.addTo(map);
+
+        L.control.layers({
+          "Satellite (Esri)": satelliteLayer,
+          "OpenStreetMap": streetLayer
+        }, null, { position: 'topright' }).addTo(map);
+
+        drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+      }
+    } catch(err) {
+      console.error("Map initialization error:", err);
+    }
+
     // --------------------------------------------------------------------------
     // 2. LEAFLET DRAW TOOLING FOR LAND AREA SELECTION
     // --------------------------------------------------------------------------
-    const drawControl = new L.Control.Draw({
-      position: 'topleft',
-      draw: {
-        polyline: false,
-        circle: false,
-        circlemarker: false,
-        marker: false,
-        rectangle: {
-          shapeOptions: {
-            color: '#d97706',
-            weight: 2,
-            dashArray: '5, 5',
-            fillColor: '#fef3c7',
-            fillOpacity: 0.35
+    if (map && typeof L.Control !== 'undefined' && typeof L.Control.Draw !== 'undefined') {
+      try {
+        drawControl = new L.Control.Draw({
+          position: 'topleft',
+          draw: {
+            polyline: false,
+            circle: false,
+            circlemarker: false,
+            marker: false,
+            rectangle: {
+              shapeOptions: {
+                color: '#d97706',
+                weight: 2,
+                dashArray: '5, 5',
+                fillColor: '#fef3c7',
+                fillOpacity: 0.35
+              }
+            },
+            polygon: {
+              shapeOptions: {
+                color: '#d97706',
+                weight: 2,
+                dashArray: '5, 5',
+                fillColor: '#fef3c7',
+                fillOpacity: 0.35
+              }
+            }
+          },
+          edit: {
+            featureGroup: drawnItems,
+            remove: true
           }
-        },
-        polygon: {
-          shapeOptions: {
-            color: '#d97706',
-            weight: 2,
-            dashArray: '5, 5',
-            fillColor: '#fef3c7',
-            fillOpacity: 0.35
-          }
-        }
-      },
-      edit: {
-        featureGroup: drawnItems,
-        remove: true
+        });
+        map.addControl(drawControl);
+
+        map.on(L.Draw.Event.CREATED, function (e) {
+          drawnItems.clearLayers();
+          const layer = e.layer;
+          drawnItems.addLayer(layer);
+
+          const b = layer.getBounds();
+          selectedAoiBounds = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+          
+          // Update UI
+          document.getElementById('btnClearAoi').classList.remove('hidden');
+          document.getElementById('aoiStatusBox').classList.remove('hidden');
+          document.getElementById('legendAoiRow').style.display = 'flex';
+          document.getElementById('aoiCoordsText').innerText = 
+            `${b.getSouth().toFixed(4)}°N, ${b.getWest().toFixed(4)}°E to ${b.getNorth().toFixed(4)}°N, ${b.getEast().toFixed(4)}°E`;
+        });
+      } catch (err) {
+        console.warn("Leaflet Draw init warning:", err);
       }
-    });
-    map.addControl(drawControl);
-
-    map.on(L.Draw.Event.CREATED, function (e) {
-      drawnItems.clearLayers();
-      const layer = e.layer;
-      drawnItems.addLayer(layer);
-
-      const b = layer.getBounds();
-      selectedAoiBounds = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
-      
-      // Update UI
-      document.getElementById('btnClearAoi').classList.remove('hidden');
-      document.getElementById('aoiStatusBox').classList.remove('hidden');
-      document.getElementById('legendAoiRow').style.display = 'flex';
-      document.getElementById('aoiCoordsText').innerText = 
+    } 
         `${b.getSouth().toFixed(4)}°N, ${b.getWest().toFixed(4)}°E to ${b.getNorth().toFixed(4)}°N, ${b.getEast().toFixed(4)}°E`;
     });
 
@@ -722,57 +759,60 @@
     // 6. RENDER RESULTS ON MAP & DASHBOARD
     // --------------------------------------------------------------------------
     function renderAnalysisResults(data) {
-      // 1. Clear existing layers
-      if (catchmentLayer) map.removeLayer(catchmentLayer);
-      if (pondMarker) map.removeLayer(pondMarker);
-
-      // 2. Overlay Catchment Polygon
-      const geojson = data.catchment.boundary_geojson;
-      catchmentLayer = L.geoJSON(geojson, {
-        style: {
-          color: '#0284c7',
-          weight: 3,
-          opacity: 0.9,
-          fillColor: '#38bdf8',
-          fillOpacity: 0.35
-        }
-      }).addTo(map);
-
-      // Fit map bounds to catchment
-      map.fitBounds(catchmentLayer.getBounds(), { padding: [50, 50] });
-
-      // 3. Overlay Pond Marker with Custom Icon
       const pond = data.pond_site;
-      const pondIcon = L.divIcon({
-        className: 'custom-pond-icon',
-        html: `
-          <div class="relative flex items-center justify-center">
-            <div class="w-8 h-8 rounded-full bg-blue-500/40 water-pulse absolute"></div>
-            <div class="w-7 h-7 rounded-full bg-blue-600 border-2 border-white text-white flex items-center justify-center shadow-lg relative z-10">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+
+      // 1. Overlay on Map if map is initialized
+      if (map && typeof L !== 'undefined') {
+        if (catchmentLayer) map.removeLayer(catchmentLayer);
+        if (pondMarker) map.removeLayer(pondMarker);
+
+        // Overlay Catchment Polygon
+        const geojson = data.catchment.boundary_geojson;
+        catchmentLayer = L.geoJSON(geojson, {
+          style: {
+            color: '#0284c7',
+            weight: 3,
+            opacity: 0.9,
+            fillColor: '#38bdf8',
+            fillOpacity: 0.35
+          }
+        }).addTo(map);
+
+        // Fit map bounds to catchment
+        map.fitBounds(catchmentLayer.getBounds(), { padding: [50, 50] });
+
+        // Overlay Pond Marker with Custom Icon
+        const pondIcon = L.divIcon({
+          className: 'custom-pond-icon',
+          html: `
+            <div class="relative flex items-center justify-center">
+              <div class="w-8 h-8 rounded-full bg-blue-500/40 water-pulse absolute"></div>
+              <div class="w-7 h-7 rounded-full bg-blue-600 border-2 border-white text-white flex items-center justify-center shadow-lg relative z-10">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+              </div>
+            </div>
+          `,
+          iconSize: [28, 28],
+          iconAnchor: [14, 14]
+        });
+
+        pondMarker = L.marker([pond.lat, pond.lon], { icon: pondIcon }).addTo(map);
+
+        const popupContent = `
+          <div class="p-1 space-y-1.5 font-sans">
+            <div class="font-bold text-xs text-blue-900 border-b pb-1 flex items-center gap-1">
+              <span>💧 Suggested Pond Site</span>
+            </div>
+            <div class="text-[11px] space-y-1 text-slate-700">
+              <div><strong>Elevation:</strong> ${pond.elevation_m.toFixed(1)} m AMSL</div>
+              <div><strong>Catchment:</strong> ${data.catchment.area_hectares} ha (${data.catchment.area_m2.toLocaleString()} m²)</div>
+              <div><strong>Annual Yield:</strong> ${(data.catchment.expected_water_volume_m3 || 0).toLocaleString()} m³</div>
+              <div><strong>Coordinates:</strong> ${pond.lat.toFixed(6)}°, ${pond.lon.toFixed(6)}°</div>
             </div>
           </div>
-        `,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14]
-      });
-
-      pondMarker = L.marker([pond.lat, pond.lon], { icon: pondIcon }).addTo(map);
-
-      const popupContent = `
-        <div class="p-1 space-y-1.5 font-sans">
-          <div class="font-bold text-xs text-blue-900 border-b pb-1 flex items-center gap-1">
-            <span>💧 Suggested Pond Site</span>
-          </div>
-          <div class="text-[11px] space-y-1 text-slate-700">
-            <div><strong>Elevation:</strong> ${pond.elevation_m.toFixed(1)} m AMSL</div>
-            <div><strong>Catchment:</strong> ${data.catchment.area_hectares} ha (${data.catchment.area_m2.toLocaleString()} m²)</div>
-            <div><strong>Annual Yield:</strong> ${(data.catchment.expected_water_volume_m3 || 0).toLocaleString()} m³</div>
-            <div><strong>Coordinates:</strong> ${pond.lat.toFixed(6)}°, ${pond.lon.toFixed(6)}°</div>
-          </div>
-        </div>
-      `;
-      pondMarker.bindPopup(popupContent).openPopup();
+        `;
+        pondMarker.bindPopup(popupContent).openPopup();
+      }
 
       // 4. Populate Results Dashboard
       document.getElementById('noResultsNotice').classList.add('hidden');
