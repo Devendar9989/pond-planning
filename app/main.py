@@ -1,16 +1,22 @@
 """FastAPI application for Contour-Based Pond Catchment Analysis API with Interactive Frontend."""
 
 import json
+import logging
 import os
 import shutil
 import tempfile
 import time
 from typing import List, Optional, Tuple
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
+import numpy as np
+
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+
+from opentelemetry import trace
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from app.config import DEFAULT_MIN_CATCHMENT_AREA_M2, DEFAULT_RESOLUTION_M, MAX_UPLOAD_SIZE_BYTES
 from app.dem.dem_builder import build_dem
@@ -24,10 +30,28 @@ from app.schemas import (
     PondSiteResponse,
 )
 from app.terrain.hydrology import analyze_terrain
+from app.telemetry import (
+    PROM_ACTIVE_REQUESTS,
+    PROM_REQUESTS_TOTAL,
+    flush_telemetry,
+    get_prometheus_metrics_bytes,
+    get_recent_logs,
+    get_recent_spans,
+    get_telemetry_stats,
+    record_analysis_failure,
+    record_analysis_metrics,
+    setup_telemetry,
+    trace_stage,
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 SAMPLE_KML_PATH = os.path.join(BASE_DIR, "..", "contours_1m.kml")
+
+# Initialize OpenTelemetry Tracing, Metrics, and Logging
+setup_telemetry(service_name="pondplan-ai")
+logger = logging.getLogger("pondplan-ai")
+logger.setLevel(logging.INFO)
 
 app = FastAPI(
     title="Contour-Based Pond Catchment Analysis API",
@@ -38,6 +62,9 @@ app = FastAPI(
     ),
     version="1.0.0",
 )
+
+# OpenTelemetry FastAPI Auto-Instrumentation
+FastAPIInstrumentor.instrument_app(app)
 
 # Enable CORS for cross-origin client integration
 app.add_middleware(
@@ -57,7 +84,48 @@ app.add_middleware(
 )
 def health_check() -> HealthResponse:
     """Returns the operational status of the service."""
+    PROM_REQUESTS_TOTAL.labels(method="GET", endpoint="/health", status_code="200").inc()
     return HealthResponse(status="ok")
+
+
+@app.get(
+    "/metrics",
+    tags=["Observability"],
+    summary="Prometheus OpenTelemetry metrics exposition",
+)
+def get_metrics():
+    """Exposes OpenTelemetry and application metrics in standard Prometheus format."""
+    return Response(content=get_prometheus_metrics_bytes(), media_type="text/plain; version=0.0.4; charset=utf-8")
+
+
+@app.get(
+    "/api/telemetry/stats",
+    tags=["Observability"],
+    summary="Get OpenTelemetry runtime statistics and performance summary",
+)
+def get_telemetry_statistics():
+    """Returns high-level OpenTelemetry performance metrics, trace IDs, and request counts."""
+    return get_telemetry_stats()
+
+
+@app.get(
+    "/api/telemetry/spans",
+    tags=["Observability"],
+    summary="Get recent OpenTelemetry spans and trace timelines",
+)
+def get_telemetry_spans():
+    """Returns the buffer of recent OpenTelemetry spans with execution durations and attributes."""
+    return {"spans": get_recent_spans()}
+
+
+@app.get(
+    "/api/telemetry/logs",
+    tags=["Observability"],
+    summary="Get recent application logs correlated with OpenTelemetry trace IDs",
+)
+def get_telemetry_logs():
+    """Returns recent structured log entries with trace_id and span_id correlation."""
+    return {"logs": get_recent_logs()}
 
 
 @app.get(
@@ -149,16 +217,28 @@ async def analyze_contour(
     """
     upload = contour_map or file
     if upload is None:
+        record_analysis_failure()
+        PROM_REQUESTS_TOTAL.labels(method="POST", endpoint="/analyzeContour", status_code="400").inc()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Missing contour map file. Please upload a KML or KMZ file under variable name 'contour_map'.",
         )
 
+    PROM_ACTIVE_REQUESTS.inc()
     start_time = time.perf_counter()
+
+    # Capture active OpenTelemetry trace context
+    current_span = trace.get_current_span()
+    ctx = current_span.get_span_context() if current_span else None
+    active_trace_id = format(ctx.trace_id, "032x") if ctx and ctx.trace_id else None
+    active_span_id = format(ctx.span_id, "016x") if ctx and ctx.span_id else None
 
     filename = upload.filename or ""
     lower_name = filename.lower()
     if not (lower_name.endswith(".kml") or lower_name.endswith(".kmz")):
+        record_analysis_failure()
+        PROM_REQUESTS_TOTAL.labels(method="POST", endpoint="/analyzeContour", status_code="400").inc()
+        PROM_ACTIVE_REQUESTS.dec()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unsupported file format. Please upload a .kml or .kmz file.",
@@ -169,22 +249,35 @@ async def analyze_contour(
     tmp_path = None
 
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
-            tmp_path = tmp_file.name
-            bytes_written = 0
-            while chunk := await upload.read(64 * 1024):  # 64KB chunks
-                bytes_written += len(chunk)
-                if bytes_written > MAX_UPLOAD_SIZE_BYTES:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Uploaded file exceeds maximum size limit of {MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB.",
-                    )
-                tmp_file.write(chunk)
+        with trace_stage("file_upload_streaming", {"upload.filename": filename}) as upload_span:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+                tmp_path = tmp_file.name
+                bytes_written = 0
+                while chunk := await upload.read(64 * 1024):  # 64KB chunks
+                    bytes_written += len(chunk)
+                    if bytes_written > MAX_UPLOAD_SIZE_BYTES:
+                        record_analysis_failure()
+                        PROM_REQUESTS_TOTAL.labels(method="POST", endpoint="/analyzeContour", status_code="400").inc()
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Uploaded file exceeds maximum size limit of {MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB.",
+                        )
+                    tmp_file.write(chunk)
+                upload_span.set_attribute("upload.bytes_written", bytes_written)
+        logger.info(f"Accepted contour upload: {filename} ({bytes_written} bytes)")
 
         # 1. Parse KML / KMZ
         try:
-            dataset = parse_kml_or_kmz(tmp_path)
+            with trace_stage("kml_parsing", {"kml.filename": filename, "kml.bytes": bytes_written}) as parse_span:
+                dataset = parse_kml_or_kmz(tmp_path)
+                parse_span.set_attribute("kml.total_lines", dataset.total_contour_lines)
+                parse_span.set_attribute("kml.contour_interval_m", float(dataset.contour_interval_m))
+                parse_span.set_attribute("kml.elevation_min_m", float(dataset.elevation_range[0]))
+                parse_span.set_attribute("kml.elevation_max_m", float(dataset.elevation_range[1]))
+            logger.info(f"KML parsed: {dataset.total_contour_lines} contours, interval {dataset.contour_interval_m}m, elevation [{dataset.elevation_range[0]:.1f}m, {dataset.elevation_range[1]:.1f}m]")
         except ValueError as e:
+            record_analysis_failure()
+            PROM_REQUESTS_TOTAL.labels(method="POST", endpoint="/analyzeContour", status_code="400").inc()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Failed to parse contour file: {str(e)}",
@@ -193,8 +286,17 @@ async def analyze_contour(
         # 2. Build DEM with dynamic UTM projection and auto-coarsening
         try:
             target_res = resolution_m if resolution_m and resolution_m > 0 else DEFAULT_RESOLUTION_M
-            dem = build_dem(dataset, requested_resolution_m=target_res)
+            with trace_stage("dem_construction", {"dem.requested_resolution_m": float(target_res)}) as dem_span:
+                dem = build_dem(dataset, requested_resolution_m=target_res)
+                dem_span.set_attribute("dem.grid_rows", int(dem.grid.shape[0]))
+                dem_span.set_attribute("dem.grid_cols", int(dem.grid.shape[1]))
+                dem_span.set_attribute("dem.total_cells", int(dem.grid.size))
+                dem_span.set_attribute("dem.effective_resolution_m", float(dem.resolution_m))
+                dem_span.set_attribute("dem.auto_coarsened", bool(dem.resolution_auto_adjusted))
+            logger.info(f"DEM constructed: shape={dem.grid.shape[1]}x{dem.grid.shape[0]} ({dem.grid.size} cells), resolution={dem.resolution_m}m")
         except Exception as e:
+            record_analysis_failure()
+            PROM_REQUESTS_TOTAL.labels(method="POST", endpoint="/analyzeContour", status_code="500").inc()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed during DEM generation: {str(e)}",
@@ -202,8 +304,15 @@ async def analyze_contour(
 
         # 3. Hydrological terrain modeling
         try:
-            hydro = analyze_terrain(dem.grid, dem.resolution_m)
+            with trace_stage("hydrological_terrain_analysis", {"hydro.resolution_m": float(dem.resolution_m)}) as hydro_span:
+                hydro = analyze_terrain(dem.grid, dem.resolution_m)
+                hydro_span.set_attribute("hydro.mean_slope_pct", float(np.mean(hydro.slope_pct)))
+                hydro_span.set_attribute("hydro.max_slope_pct", float(np.max(hydro.slope_pct)))
+                hydro_span.set_attribute("hydro.max_accumulation_cells", int(np.max(hydro.flow_accumulation)))
+            logger.info(f"Hydrology modeled: mean slope={float(np.mean(hydro.slope_pct)):.2f}%, max flow accum={int(np.max(hydro.flow_accumulation))} cells")
         except Exception as e:
+            record_analysis_failure()
+            PROM_REQUESTS_TOTAL.labels(method="POST", endpoint="/analyzeContour", status_code="500").inc()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed during hydrological analysis: {str(e)}",
@@ -216,18 +325,31 @@ async def analyze_contour(
         # 5. Farm pond multi-criteria siting
         try:
             min_area = min_catchment_area_m2 if min_catchment_area_m2 and min_catchment_area_m2 > 0 else DEFAULT_MIN_CATCHMENT_AREA_M2
-            pond_site = select_pond_site(
-                dem,
-                hydro,
-                min_catchment_area_m2=min_area,
-                selected_bounds=parsed_aoi_bounds,
-            )
+            with trace_stage("pond_siting_selection", {
+                "pond.min_catchment_area_m2": float(min_area),
+                "pond.land_area_applied": bool(land_area_applied),
+            }) as pond_span:
+                pond_site = select_pond_site(
+                    dem,
+                    hydro,
+                    min_catchment_area_m2=min_area,
+                    selected_bounds=parsed_aoi_bounds,
+                )
+                pond_span.set_attribute("pond.selected_lat", float(pond_site.lat))
+                pond_span.set_attribute("pond.selected_lon", float(pond_site.lon))
+                pond_span.set_attribute("pond.selected_elevation_m", float(pond_site.elevation_m))
+                pond_span.set_attribute("pond.accum_cells", int(pond_site.flow_accum_cells))
+            logger.info(f"Optimal pond site sited at ({pond_site.lat:.6f}, {pond_site.lon:.6f}), elevation={pond_site.elevation_m:.1f}m AMSL, contributing cells={pond_site.flow_accum_cells}")
         except ValueError as e:
+            record_analysis_failure()
+            PROM_REQUESTS_TOTAL.labels(method="POST", endpoint="/analyzeContour", status_code="422").inc()
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Pond siting failed: {str(e)}",
             )
         except Exception as e:
+            record_analysis_failure()
+            PROM_REQUESTS_TOTAL.labels(method="POST", endpoint="/analyzeContour", status_code="500").inc()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Internal error during pond site selection: {str(e)}",
@@ -238,21 +360,48 @@ async def analyze_contour(
         eff_runoff_c = runoff_coefficient if runoff_coefficient and 0.0 < runoff_coefficient <= 1.0 else 0.35
 
         try:
-            catchment = delineate_catchment(
-                dem,
-                hydro,
-                outlet_row=pond_site.row,
-                outlet_col=pond_site.col,
-                rainfall_mm=eff_rainfall,
-                runoff_coefficient=eff_runoff_c,
-            )
+            with trace_stage("catchment_and_volume_delineation", {
+                "catchment.rainfall_mm": float(eff_rainfall),
+                "catchment.runoff_c": float(eff_runoff_c),
+            }) as catch_span:
+                catchment = delineate_catchment(
+                    dem,
+                    hydro,
+                    outlet_row=pond_site.row,
+                    outlet_col=pond_site.col,
+                    rainfall_mm=eff_rainfall,
+                    runoff_coefficient=eff_runoff_c,
+                )
+                catch_span.set_attribute("catchment.area_m2", float(catchment.area_m2))
+                catch_span.set_attribute("catchment.area_ha", float(catchment.area_hectares))
+                catch_span.set_attribute("catchment.water_volume_m3", float(catchment.expected_water_volume_m3))
+                catch_span.set_attribute("catchment.water_volume_ml", float(catchment.expected_water_volume_million_liters))
+            logger.info(f"Catchment delineated: {catchment.area_m2:.1f} m2 ({catchment.area_hectares:.2f} ha), expected water yield={catchment.expected_water_volume_m3:.1f} m3")
         except Exception as e:
+            record_analysis_failure()
+            PROM_REQUESTS_TOTAL.labels(method="POST", endpoint="/analyzeContour", status_code="500").inc()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed during catchment delineation: {str(e)}",
             )
 
-        elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+        elapsed_duration = time.perf_counter() - start_time
+        elapsed_ms = int(elapsed_duration * 1000)
+
+        # Record metrics in OpenTelemetry & Prometheus
+        record_analysis_metrics(
+            catchment_area_m2=float(catchment.area_m2),
+            water_volume_m3=float(catchment.expected_water_volume_m3),
+            grid_cells=int(dem.grid.size),
+            duration_s=elapsed_duration,
+            elevation_min=float(dataset.elevation_range[0]),
+            elevation_max=float(dataset.elevation_range[1]),
+            trace_id=active_trace_id,
+        )
+        PROM_REQUESTS_TOTAL.labels(method="POST", endpoint="/analyzeContour", status_code="200").inc()
+
+        logger.info(f"Analysis completed successfully in {elapsed_ms}ms (trace_id={active_trace_id})")
+        flush_telemetry()
 
         # Assemble final response
         return AnalyzeContourResponse(
@@ -286,9 +435,12 @@ async def analyze_contour(
                 boundary_geojson=catchment.boundary_geojson,
             ),
             processing_time_ms=elapsed_ms,
+            trace_id=active_trace_id,
+            span_id=active_span_id,
         )
 
     finally:
+        PROM_ACTIVE_REQUESTS.dec()
         # Cleanup temporary disk files
         if tmp_path and os.path.exists(tmp_path):
             try:

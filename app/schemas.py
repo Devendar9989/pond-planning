@@ -77,6 +77,16 @@ class AnalyzeContourResponse(BaseModel):
     pond_site: PondSiteResponse
     catchment: CatchmentResponse
     processing_time_ms: int = Field(..., description="Total processing time in milliseconds", json_schema_extra={"example": 2446})
+    trace_id: Optional[str] = Field(
+        default=None,
+        description="OpenTelemetry Trace ID associated with this analysis request",
+        json_schema_extra={"example": "4bf92f3577b34da6a3ce929d0e0e4736"},
+    )
+    span_id: Optional[str] = Field(
+        default=None,
+        description="OpenTelemetry Root Span ID associated with this analysis request",
+        json_schema_extra={"example": "00f067aa0ba902b7"},
+    )
 
 
 class HealthResponse(BaseModel):
